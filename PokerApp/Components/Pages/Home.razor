@@ -1,0 +1,72 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Home</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <h1>Welcome to Poker App, @context.User.Identity?.Name!</h1>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Start Playing</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" @onclick="NavigateToCreateTable">Create a Table</button>
+                            <button class="btn btn-success" @onclick="NavigateToJoinTable">Join a Table</button>
+                            <button class="btn btn-info" @onclick="NavigateToTables">Browse Tables</button>
+                            <button class="btn btn-secondary" @onclick="NavigateToManage">Manage My Tables</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Recent Activity</h3>
+                    </div>
+                    <div class="card-body">
+                        <!-- Recent games or notifications could go here -->
+                        <p>No recent activity to display.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <h1>Welcome to Poker App!</h1>
+        <p>Please log in to start playing.</p>
+        <a href="/Account/Login" class="btn btn-primary">Log in</a>
+        <a href="/Account/Register" class="btn btn-secondary">Register</a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private void NavigateToCreateTable()
+    {
+        NavigationManager.NavigateTo("poker/create");
+    }
+
+    private void NavigateToJoinTable()
+    {
+        NavigationManager.NavigateTo("/poker/join");
+    }
+
+    private void NavigateToTables()
+    {
+        NavigationManager.NavigateTo("/poker/tables");
+    }
+
+    private void NavigateToManage()
+    {
+        NavigationManager.NavigateTo("poker/manage");
+    }
+}

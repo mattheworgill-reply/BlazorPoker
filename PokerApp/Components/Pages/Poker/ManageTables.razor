@@ -1,0 +1,266 @@
+@page "/poker/manage"
+@rendermode InteractiveServer
+
+@inject PokerGameService PokerGameService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Manage Poker Tables</PageTitle>
+
+<div class="container mt-4">
+    <h3>Manage Your Poker Tables</h3>
+
+    @if (isLoading)
+    {
+        <div class="d-flex justify-content-center my-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        @if (errorMessage != null)
+        {
+            <div class="alert alert-danger" role="alert">
+                @errorMessage
+            </div>
+        }
+
+        @if (userTables.Count == 0)
+        {
+            <div class="alert alert-info" role="alert">
+                You don't have any poker tables yet. <a href="/poker/create" class="alert-link">Create one</a>!
+            </div>
+        }
+        else
+        {
+            <div class="row mb-4">
+                <div class="col">
+                    <a href="/poker/create" class="btn btn-success">
+                        <i class="fas fa-plus"></i> Create New Table
+                    </a>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Table Name</th>
+                            <th>Blinds</th>
+                            <th>Timer</th>
+                            <th>Created</th>
+                            <th>Status</th>
+                            <th>Players</th>
+                            <th>Code</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var table in userTables)
+                        {
+                            <tr>
+                                <td>@table.Name</td>
+                                <td>$@table.SmallBlind / $@table.BigBlind</td>
+                                <td>@table.TimerSeconds sec</td>
+                                <td>@table.CreatedAt.ToString("MM/dd/yyyy")</td>
+                                <td>
+                                    @if (table.Game?.State == GameState.NOT_STARTED)
+                                    {
+                                        <span class="badge bg-secondary">Game Not Started</span>
+                                    }
+                                    else if (table.Game?.State == GameState.END)
+                                    {
+                                        <span class="badge bg-success">End of Hand</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info">Active</span>
+                                    }
+                                </td>
+                                <td>@(table.Players.Count(p => p.IsSeated)) / 10</td>
+                                <td>
+                                    <span class="table-code" @onclick="() => CopyTableCode(table.TableCode)">
+                                        @table.TableCode <i class="fas fa-copy ms-1"></i>
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <button class="btn btn-sm btn-primary" @onclick="() => JoinTable(table.Id)">
+                                            <i class="fas fa-sign-in-alt"></i> Join
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteTablePrompt(table)">
+                                            <i class="fas fa-trash-alt"></i> Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@if (showDeleteConfirm)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Delete</h5>
+                    <button type="button" class="btn-close" @onclick="CancelDelete"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the table "@tableToDelete?.Name"?</p>
+                    <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete">Delete Table</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<PokerTable> userTables = new();
+    private string userId = string.Empty;
+    private bool isLoading = true;
+    private string? errorMessage = null;
+    
+    // Delete confirmation
+    private bool showDeleteConfirm = false;
+    private PokerTable? tableToDelete = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get current user
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            if (user.Identity?.IsAuthenticated ?? false)
+            {
+                var appUser = await UserManager.GetUserAsync(user);
+                if (appUser != null)
+                {
+                    userId = appUser.Id;
+                    await LoadUserTables();
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/Identity/Account/Login", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading tables: {ex.Message}";
+            Console.Error.WriteLine($"Error in OnInitializedAsync: {ex}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadUserTables()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+            userTables = await context.PokerTables
+                .Include(t => t.Game)
+                .Include(t => t.Players)
+                .Where(t => t.OwnerId == userId && t.IsActive)
+                .OrderByDescending(t => t.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading tables: {ex.Message}";
+            Console.Error.WriteLine($"Error loading user tables: {ex}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void JoinTable(string tableId)
+    {
+        NavigationManager.NavigateTo($"/poker/table/{tableId}");
+    }
+
+    private async Task CopyTableCode(string code)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            // You could add a toast notification here
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error copying to clipboard: {ex}");
+        }
+    }
+
+    private void DeleteTablePrompt(PokerTable table)
+    {
+        tableToDelete = table;
+        showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        tableToDelete = null;
+        showDeleteConfirm = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (tableToDelete == null) return;
+        
+        try
+        {
+            await using var context = await DbContextFactory.CreateDbContextAsync();
+            var table = await context.PokerTables.FindAsync(tableToDelete.Id);
+            
+            if (table != null)
+            {
+                // Soft delete - just mark as inactive
+                table.IsActive = false;
+                await context.SaveChangesAsync();
+                
+                // Remove from list
+                userTables.Remove(tableToDelete);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error deleting table: {ex.Message}";
+            Console.Error.WriteLine($"Error deleting table: {ex}");
+        }
+        finally
+        {
+            tableToDelete = null;
+            showDeleteConfirm = false;
+        }
+    }
+}

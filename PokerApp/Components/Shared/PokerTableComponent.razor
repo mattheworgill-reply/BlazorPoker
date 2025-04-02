@@ -1,0 +1,83 @@
+
+@namespace PokerApp.Components.Shared
+
+<HeadContent>
+    <link href="css/poker-table.css" rel="stylesheet" />
+    <link href="css/cards.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="poker-table">
+    @for (int i = 1; i <= 10; i++)
+    {
+        int position = i;
+        GamePlayer? player = GetPlayerAtPosition(position);
+        bool isCurrentTurn = player != null && Snapshot.TurnPlayer != null && player == Snapshot.TurnPlayer;
+        bool isCurrentUser = player != null && IsCurrentUserPlayer(player);
+        
+        <PlayerSeatComponent 
+            Player="@player"
+            Position="@position"
+            IsCurrentUser="@isCurrentUser"
+            IsCurrentTurn="@isCurrentTurn"
+            IsActive="@(player != null && player.IsActive())"
+            ShowPlaceholderCards="@(Snapshot.GameState != GameState.NOT_STARTED)"
+            OnPositionSelected="@OnPositionSelected" />
+    }
+    <div class="community-area">
+        <CommunityCardsComponent Cards="@Snapshot.CommunityCards" />
+    
+        <div class="pot-info">
+            <div class="main-pot">Pot: $@(Snapshot.Pot != null ? Snapshot.Pot.Amount : 0.0)</div>
+            @if (Snapshot.SidePotAmounts.Any())
+            {
+                <div class="side-pots">
+                    Side Pots: @string.Join(", ", Snapshot.SidePotAmounts.Select(p => $"${p}"))
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+
+
+@code {
+    [Parameter]
+    public GameSnapshot Snapshot { get; set; } = default!;
+    
+    [Parameter]
+    public string CurrentUserId { get; set; } = string.Empty;
+    
+    [Parameter]
+    public bool IsOwner { get; set; }
+    
+    [Parameter]
+    public EventCallback<int> OnPositionSelected { get; set; }
+    
+    private GamePlayer? GetPlayerAtPosition(int position)
+    {
+        @* Console.WriteLine("Getting Player at position " + position); *@
+        if (Snapshot.TablePositions.Count < position)
+            return null;
+            
+        int playerIndex = Snapshot.TablePositions[position - 1];
+        if (playerIndex == -1 || playerIndex >= Snapshot.Players.Count)
+            return null;
+            
+        return Snapshot.Players[playerIndex];
+    }
+    
+    private bool IsCurrentUserPlayer(GamePlayer player)
+    {
+        // Find the player index and see if it matches currentPlayerIndex
+        // We'd need to get this from the parent component or service
+        
+        // For now, we'll use a simplified approach
+        // In a real implementation, you'd have a way to map players to users
+        // This is placeholder logic
+        
+        // Assuming you have a way to identify the current user's player
+        // For example, maybe there's a User property on Player or similar
+        @* Console.WriteLine("Checking isCurrentUserPlayer, player.UserId = " + player.UserId + " currentUserId = " + CurrentUserId); *@
+        return player != null && player.UserId == CurrentUserId;
+    }
+}

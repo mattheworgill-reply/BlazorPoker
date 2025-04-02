@@ -1,0 +1,180 @@
+
+@namespace PokerApp.Components.Shared
+
+<div class="betting-controls">
+    <div class="player-info">
+        <div>Current bet: $@CurrentBet</div>
+        <div>Your bet: $@CurrentPlayer.CurrentBet</div>
+        <div>Your stack: $@CurrentPlayer.Stack</div>
+    </div>
+    
+    @if (CurrentBet == 0)
+    {
+        <div class="button-group">
+            <EditForm Model="@betModel" OnValidSubmit="HandleBet">
+                <div class="input-group">
+                    <InputNumber @bind-Value="betModel.Amount" class="form-control" min="@MinBet" max="@CurrentPlayer.Stack" />
+                    <button type="submit" class="btn btn-warning">Bet</button>
+                </div>
+                @if (showError)
+                {
+                    <div class="text-danger">@errorMessage</div>
+                }
+            </EditForm>
+            
+            <button class="btn btn-success" @onclick="HandleCheck">Check</button>
+        </div>
+    }
+    else
+    {
+        <div class="button-group">
+            @if (CurrentBet > CurrentPlayer.CurrentBet)
+            {
+                <button class="btn btn-success" @onclick="HandleCall">Call $@(CurrentBet - CurrentPlayer.CurrentBet)</button>
+                
+                <EditForm Model="@betModel" OnValidSubmit="HandleRaise">
+                    <div class="input-group">
+                        <InputNumber @bind-Value="betModel.Amount" class="form-control" min="@MinRaise" max="@CurrentPlayer.Stack" />
+                        <button type="submit" class="btn btn-warning">Raise</button>
+                    </div>
+                    @if (showError)
+                    {
+                        <div class="text-danger">@errorMessage</div>
+                    }
+                </EditForm>
+                
+                <button class="btn btn-danger" @onclick="HandleFold">Fold</button>
+            }
+            else
+            {
+                <button class="btn btn-success" @onclick="HandleCheck">Check</button>
+                
+                <EditForm Model="@betModel" OnValidSubmit="HandleRaise">
+                    <div class="input-group">
+                        <InputNumber @bind-Value="betModel.Amount" class="form-control" min="@MinBet" max="@CurrentPlayer.Stack" />
+                        <button type="submit" class="btn btn-warning">Raise</button>
+                    </div>
+                    @if (showError)
+                    {
+                        <div class="text-danger">@errorMessage</div>
+                    }
+                </EditForm>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public GamePlayer CurrentPlayer { get; set; } = default!;
+    
+    [Parameter]
+    public decimal CurrentBet { get; set; }
+    
+    [Parameter]
+    public decimal BigBlind { get; set; }
+    
+    [Parameter]
+    public EventCallback<PlayerActionEventArgs> OnPlayerAction { get; set; }
+    
+    private class BetModel
+    {
+        public decimal Amount { get; set; } = 0;
+    }
+    
+    private BetModel betModel = new();
+    private bool showError = false;
+    private string errorMessage = string.Empty;
+    
+    private decimal MinBet => BigBlind;
+    private decimal MinRaise => CurrentBet * 2 - CurrentPlayer.CurrentBet;
+    
+    protected override void OnInitialized()
+    {
+        if (CurrentBet == 0)
+        {
+            betModel.Amount = BigBlind;
+        }
+        else
+        {
+            betModel.Amount = MinRaise;
+        }
+    }
+    
+    private async Task HandleBet()
+    {
+        if (betModel.Amount < MinBet)
+        {
+            showError = true;
+            errorMessage = $"Minimum bet is ${MinBet}";
+            return;
+        }
+        
+        if (betModel.Amount > CurrentPlayer.Stack)
+        {
+            showError = true;
+            errorMessage = "Bet cannot exceed your stack";
+            return;
+        }
+        
+        showError = false;
+        await OnPlayerAction.InvokeAsync(new PlayerActionEventArgs
+            {
+                Action = PlayerAction.BET,
+                Amount = betModel.Amount
+            }
+        );
+    }
+    
+    private async Task HandleRaise()
+    {
+        if (betModel.Amount < MinRaise)
+        {
+            showError = true;
+            errorMessage = $"Minimum raise is ${MinRaise}";
+            return;
+        }
+        
+        if (betModel.Amount > CurrentPlayer.Stack)
+        {
+            showError = true;
+            errorMessage = "Raise cannot exceed your stack";
+            return;
+        }
+        
+        showError = false;
+        await OnPlayerAction.InvokeAsync(new PlayerActionEventArgs
+            {
+                Action = PlayerAction.BET,
+                Amount = betModel.Amount
+            }
+        );
+    }
+    
+    private async Task HandleCall()
+    {
+        await OnPlayerAction.InvokeAsync(new PlayerActionEventArgs
+            {
+                Action = PlayerAction.CALL
+            }
+        );
+    }
+    
+    private async Task HandleCheck()
+    {
+        await OnPlayerAction.InvokeAsync(new PlayerActionEventArgs
+            {
+                Action = PlayerAction.CHECK
+            }
+        );
+    }
+    
+    private async Task HandleFold()
+    {
+        await OnPlayerAction.InvokeAsync(new PlayerActionEventArgs
+            {
+                Action = PlayerAction.FOLD
+            }
+        );
+    }
+}

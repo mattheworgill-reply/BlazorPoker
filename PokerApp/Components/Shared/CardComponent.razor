@@ -1,0 +1,167 @@
+
+@namespace PokerApp.Components.Shared
+
+<HeadContent>
+    <link href="css/poker-table.css" rel="stylesheet" />
+    <link href="css/cards.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="playing-card @(Visible ? "visible" : "hidden")"
+     title="@(Visible ? CardModel.ToString() : "Card")">
+    @if (Visible)
+    {
+        <div class="card-front">
+            <div class="card-corner top-left">
+                <div class="card-rank">@GetRankDisplay()</div>
+                <div class="card-suit @GetSuitColor()">@GetSuitSymbol()</div>
+            </div>
+            
+            <div class="card-center @GetSuitColor()">
+                @GetSuitSymbol()
+            </div>
+            
+            <div class="card-corner bottom-right">
+                <div class="card-rank">@GetRankDisplay()</div>
+                <div class="card-suit @GetSuitColor()">@GetSuitSymbol()</div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card-back">
+            <div class="card-pattern"></div>
+        </div>
+    }
+</div>
+
+@*<style>
+     .playing-card {
+        width: 60px;
+        height: 90px;
+        border-radius: 5px;
+        background-color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        position: relative;
+        display: inline-block;
+        margin: 2px;
+        user-select: none;
+    }
+    
+    .card-front {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+    
+    .card-corner {
+        position: absolute;
+        font-size: 14px;
+        line-height: 1;
+        text-align: center;
+    }
+    
+    .top-left {
+        top: 5px;
+        left: 5px;
+    }
+    
+    .bottom-right {
+        bottom: 5px;
+        right: 5px;
+        transform: rotate(180deg);
+    }
+    
+    .card-rank {
+        font-weight: bold;
+    }
+    
+    .card-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 30px;
+    }
+    
+    .card-back {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background-color: #0066cc;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .card-pattern {
+        width: 50px;
+        height: 80px;
+        border: 2px solid #003366;
+        border-radius: 3px;
+        background-image: repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 5px,
+            #0055aa 5px,
+            #0055aa 10px
+        );
+    } *@
+    
+    @* .red {
+        color: #cc0000;
+    }
+    
+    .black {
+        color: #000000;
+    }
+    
+    .hidden {
+        cursor: default;
+    }
+    
+    .visible {
+        cursor: pointer;
+    } 
+</style> *@
+
+@code {
+    [Parameter]
+    public Card CardModel { get; set; } = default!;
+    
+    [Parameter]
+    public bool Visible { get; set; } = false;
+    
+    private string GetRankDisplay()
+    {
+        return CardModel.Rank switch
+        {
+            Rank.Ace => "A",
+            Rank.King => "K",
+            Rank.Queen => "Q",
+            Rank.Jack => "J",
+            Rank.Ten => "10",
+            _ => ((int)CardModel.Rank).ToString()
+        };
+    }
+    
+    private string GetSuitSymbol()
+    {
+        return CardModel.Suit switch
+        {
+            Suit.Hearts => "♥",
+            Suit.Diamonds => "♦",
+            Suit.Clubs => "♣",
+            Suit.Spades => "♠",
+            _ => "?"
+        };
+    }
+    
+    private string GetSuitColor()
+    {
+        return CardModel.Suit switch
+        {
+            Suit.Hearts or Suit.Diamonds => "red",
+            _ => "black"
+        };
+    }
+}

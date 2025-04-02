@@ -1,0 +1,1229 @@
+@page "/poker/table/{TableId}"
+@rendermode InteractiveServer
+
+@implements IAsyncDisposable
+@* @inject ApplicationDbContext DbContext *@
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject PokerGameService PokerGameService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Poker Table</PageTitle>
+
+<HeadContent>
+    <link href="css/poker-table.css" rel="stylesheet" />
+</HeadContent>
+
+
+@if (pokerTable is null || gameSnapshot == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="poker-room">
+        <div class="poker-header">
+            <h3>@pokerTable.Name</h3>
+            <div class="table-info">
+                <span>Blinds: $@pokerTable.SmallBlind / $@pokerTable.BigBlind</span>
+                <span>Table Code: @pokerTable.TableCode</span>
+                @if (isTableOwner)
+                {
+                    <button class="btn btn-sm btn-primary" @onclick="ShowTableSettingsModal">
+                        <i class="fas fa-cog"></i> Settings
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="game-controls">
+            @if (isTableOwner && gameSnapshot != null)
+            {
+                <div class="owner-controls mt-3">
+                    @if (isGamePaused)
+                    {
+                        <button class="btn btn-success" @onclick="ResumeGame">
+                            <i class="fas fa-play"></i> Resume Game
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-warning" @onclick="PauseGame">
+                            <i class="fas fa-pause"></i> Pause Game
+                        </button>
+                    }
+            
+                    <button class="btn btn-info" @onclick="RestartTimer">
+                        <i class="fas fa-redo"></i> Restart Timer
+                    </button>
+
+                    @*@if (isAutoPlayOn)
+                    {
+                        <button class="btn btn-warning" @onclick="SetAutoPlay">
+                            <i class="fas fa-redo"></i> Turn Off Auto Play
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-success" @onclick="SetAutoPlay">
+                            <i class="fas fa-pause"></i> Auto Play
+                        </button>
+                    }*@
+                    <button class="btn @(isAutoPlayOn ? "btn-warning" : "btn-success")" @onclick="SetAutoPlay">
+                        <i class="fas @(isAutoPlayOn ? "fa-redo" : "fa-pause")"></i> 
+                        @(isAutoPlayOn ? "Turn Off Auto Play" : "Auto Play")
+                    </button>
+                </div>
+                @if (gameSnapshot.GameState == GameState.NOT_STARTED && pokerTable.Players.Count(p => p.IsSeated) >= 2)
+                {
+                        <button class="btn btn-success" @onclick="StartGame">Start Game</button>
+            
+                }
+                else if (!isAutoPlayOn)
+                {
+                    @if (gameSnapshot.GameState != GameState.NOT_STARTED && gameSnapshot.GameState != GameState.END && gameSnapshot.BetsMade)
+                    {
+                        <div class="game-controls">
+                            <button class="btn btn-primary" @onclick="PlayNextStep">Next Step</button>
+                        </div>
+                    }
+                    else if (gameSnapshot.GameState == GameState.END)
+                    {
+                        <div class="new-hand-controls">
+                            <button class="btn btn-primary" @onclick="StartNextGame">Deal Next Hand</button>
+                        </div>
+                    }
+                }
+            }
+        </div>
+                            
+
+        <div class="poker-table-container">
+            <PokerTableComponent 
+                Snapshot="@gameSnapshot" 
+                CurrentUserId="@userId" 
+                IsOwner="@isTableOwner"
+                OnPositionSelected="@HandlePositionSelected" />
+        </div>
+
+        @{
+            bool showBettingControls = isCurrentPlayer && gameSnapshot.GameState != GameState.NOT_STARTED && 
+                                      gameSnapshot.GameState != GameState.END && !gameSnapshot.BetsMade;
+        }
+
+        <div class="game-action-area @(showBettingControls ? "with-betting-controls" : "")">
+            <div class="player-cards-container">
+                @if (gameSnapshot.GameState != GameState.NOT_STARTED && currentPlayerIndex >= 0 && !gameSnapshot.Players[currentPlayerIndex].HasFolded)
+                {
+                    <div class="your-cards">
+                        <h5>Your Cards</h5>
+                        <div class="cards-container">
+                            @foreach (var card in gameSnapshot.Players[currentPlayerIndex].Hand)
+                            {
+                                <CardComponent CardModel="@card" Visible="true" />
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+    
+            <div class="betting-controls-container">
+                @if (showBettingControls)
+                {
+                    <BettingControlsComponent 
+                        CurrentPlayer="@gameSnapshot.TurnPlayer" 
+                        CurrentBet="@gameSnapshot.CurrentBet"
+                        BigBlind="@gameSnapshot.BigBlind"
+                        OnPlayerAction="HandlePlayerAction" />
+                }
+            </div>
+    
+            <div class="turn-status-container">
+                @if (!gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED && gameSnapshot.GameState != GameState.END)
+                {
+                    <div class="current-turn">
+                        @if (gameSnapshot.TurnPlayer != null)
+                        {
+                            @((string.IsNullOrEmpty(gameSnapshot.TurnPlayer.User?.DisplayName) ? "Player " + gameSnapshot.TurnPlayer.Position : gameSnapshot.TurnPlayer.User?.DisplayName) + "'s turn")
+                        }
+                        <div class="timer">Time remaining: @timeRemaining seconds</div>
+                    </div>
+                }
+            </div>
+        </div>
+            
+        <div>
+            @if (gameSnapshot.GameState == GameState.END && gameSnapshot.AllWinners != null && gameSnapshot.AllWinners.Any())
+            {
+                <div class="winners-display">
+                    <h4>Winner(s)</h4>
+                    @foreach (var potAndWinners in gameSnapshot.AllWinners)
+                    {
+                        <div class="winner-group">
+                            <h5>Pot: $@potAndWinners.Key.Amount</h5>
+                            @foreach (var winner in potAndWinners.Value)
+                            {
+                                <div class="winner">
+                                    <div class="winner-name">@(string.IsNullOrEmpty(winner.Key.User?.DisplayName) ? "Player " + winner.Key.Position : winner.Key.User?.DisplayName): @winner.Value.Type</div>
+                                    <div class="winning-cards">
+                                        @foreach (var card in winner.Value.BestCards)
+                                        {
+                                            <div class="card-debug" style="display:none;">@card.Rank of @card.Suit</div>
+                                            <CardComponent CardModel="@card" Visible="true" />
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (!isTableOwner)
+                    {
+                        <div class="new-hand-controls">
+                            <div style="color:white">Waiting for table owner to deal the next hand...</div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="player-controls">
+            @if (currentPlayerIndex >= 0)
+            {
+                <div class="player-actions">
+                    @if (gameSnapshot.Players[currentPlayerIndex].IsInGame)
+                    {
+                        <button class="btn btn-warning" @onclick="StandUp">Stand Up</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-success" @onclick="SitDown">Sit Down</button>
+                    }
+                    <button class="btn btn-info" @onclick="ShowAddChipsModal">Add Chips</button>
+                    <button class="btn btn-danger" @onclick="LeaveTable">Leave Table</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Table Settings Modal -->
+    @if (showTableSettings)
+    {
+        <div class="modal fade show" style="display: block;" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Table Settings</h5>
+                        <button type="button" class="btn-close" @onclick="HideTableSettingsModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <EditForm Model="@tableSettings" OnValidSubmit="UpdateTableSettings">
+                            <DataAnnotationsValidator />
+                            
+                            <div class="mb-3">
+                                <label for="tableName" class="form-label">Table Name</label>
+                                <InputText id="tableName" @bind-Value="tableSettings.Name" class="form-control" />
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="bigBlind" class="form-label">Big Blind</label>
+                                <InputNumber id="bigBlind" @bind-Value="tableSettings.BigBlind" class="form-control" />
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="timer" class="form-label">Turn Timer (seconds)</label>
+                                <InputNumber id="timer" @bind-Value="tableSettings.TimerSeconds" class="form-control" />
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-text">Table Code: @pokerTable.TableCode</div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+
+    <!-- Add Chips Modal -->
+    @if (showAddChipsModal)
+    {
+        <div class="modal fade show" style="display: block;" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Add Chips</h5>
+                        <button type="button" class="btn-close" @onclick="HideAddChipsModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <EditForm Model="@addChipsModel" OnValidSubmit="AddChips">
+                            <DataAnnotationsValidator />
+                            
+                            <div class="mb-3">
+                                <label for="chipAmount" class="form-label">Amount to Add</label>
+                                <InputNumber id="chipAmount" @bind-Value="addChipsModel.Amount" class="form-control" />
+                                <ValidationMessage For="@(() => addChipsModel.Amount)" />
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Add Chips</button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+
+    <!-- Position Selection Modal -->
+    @if (showPositionModal)
+    {
+        <div class="modal fade show" style="display: block;" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Join Table at Position @selectedPosition</h5>
+                        <button type="button" class="btn-close" @onclick="HidePositionModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <EditForm Model="@joinPositionModel" OnValidSubmit="JoinPosition">
+                            <DataAnnotationsValidator />
+                            
+                            <div class="mb-3">
+                                <label for="stackAmount" class="form-label">Starting Stack</label>
+                                <InputNumber id="stackAmount" @bind-Value="joinPositionModel.Stack" class="form-control" />
+                                <ValidationMessage For="@(() => joinPositionModel.Stack)" />
+                            </div>
+                            
+                            <button type="submit" class="btn btn-success">Sit Down</button>
+                            <button type="button" class="btn btn-secondary" @onclick="HidePositionModal">Cancel</button>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    }
+}
+
+
+@code {
+    [Parameter]
+    public string? TableId { get; set; }
+    private PokerApp.Models.PokerTable? pokerTable;
+    private GameSnapshot? gameSnapshot;
+    private string userId = string.Empty;
+    private bool isTableOwner = false;
+    private bool isCurrentPlayer = false;
+    private int currentPlayerIndex = -1;
+    private int timeRemaining = 30;
+    private bool isGamePaused = false;
+    private bool isAutoPlayOn = false;
+    private HubConnection? hubConnection;
+    
+    // Modals
+    private bool showTableSettings = false;
+    private bool showAddChipsModal = false;
+    private bool showPositionModal = false;
+    private int selectedPosition = 0;
+    
+    // Models
+    private class TableSettingsModel
+    {
+        [Required]
+        [StringLength(50, MinimumLength = 3)]
+        public string Name { get; set; } = string.Empty;
+        
+        [Required]
+        [Range(1, 1000)]
+        public decimal BigBlind { get; set; } = 2.0m;
+        
+        [Required]
+        [Range(10, 120)]
+        public int TimerSeconds { get; set; } = 30;
+    }
+    
+    private class AddChipsModel
+    {
+        [Required]
+        [Range(10, 1000, ErrorMessage = "Amount must be between 10 and 1000")]
+        public decimal Amount { get; set; } = 100.0m;
+    }
+    
+    private class JoinPositionModel
+    {
+        [Required]
+        [Range(10, 1000, ErrorMessage = "Stack must be between 10 and 1000")]
+        public decimal Stack { get; set; } = 100.0m;
+    }
+    
+    private TableSettingsModel tableSettings = new();
+    private AddChipsModel addChipsModel = new();
+    private JoinPositionModel joinPositionModel = new();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // Get current user
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity?.IsAuthenticated ?? false)
+        {
+            var appUser = await UserManager.GetUserAsync(user);
+            if (appUser != null)
+            {
+                userId = appUser.Id;
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                return;
+            }
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/Identity/Account/Login", true);
+            return;
+        }
+        
+        // Load table information
+        await LoadTableData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    if (firstRender)
+    {        
+        await SetupSignalRConnection();
+    }
+}
+    
+    private async Task LoadTableData()
+    {
+        if (string.IsNullOrEmpty(TableId))
+        {
+            PokerGameService.Log("Debug", "[UI] No table, go to poker/tables");
+            NavigationManager.NavigateTo("/poker/tables");
+            return;
+        }
+        
+        try
+        {
+            PokerGameService.Log("Debug", $"[UI] Loading table data for {TableId}");
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+
+            pokerTable = await dbContext.PokerTables
+                .Include(t => t.Game)
+                .Include(t => t.Owner)
+                .Include(t => t.Players)
+                .ThenInclude(p => p.User)
+                .FirstOrDefaultAsync(t => t.Id == TableId && t.IsActive);
+            
+            if (pokerTable == null)
+            {
+                PokerGameService.Log("Debug", "[UI] No table, go to poker/tables");
+                NavigationManager.NavigateTo("/poker/tables");
+                return;
+            }
+
+            PokerGameService.Log("Debug", "[UI]got pokerTable now ordering players");
+
+            pokerTable.Players = [.. pokerTable.Players.OrderBy(p => p.Position)];    
+
+            if (pokerTable.Game == null)
+            {
+                PokerGameService.Log("Debug", "[UI] Loading table, game is null!!!! Is this a problem??");
+            }
+
+            if (tableSettings.TimerSeconds != pokerTable.TimerSeconds)
+            {
+                // reset timer??
+                PokerGameService.Log("Debug", "[UI] tableSettings and pokerTable not equal in LoadTableData");
+            }
+            
+            // Set table settings model
+            tableSettings.Name = pokerTable.Name;
+            tableSettings.BigBlind = pokerTable.BigBlind;
+            tableSettings.TimerSeconds = pokerTable.TimerSeconds;
+            
+            // Check if current user is the table owner
+            isTableOwner = pokerTable.OwnerId == userId;
+
+            // **************************
+            PokerGameService.Log("Debug", "[UI] *** Reordering poker table players ***");
+            foreach (GamePlayer player in pokerTable.Players)
+            {
+                PokerGameService.Log("Debug", "[UI] " + player.Id + " " + player.User.DisplayName + " " + player.Position);
+            }
+            pokerTable.Players = [.. pokerTable.Players.OrderBy(p => p.Position)];
+            PokerGameService.Log("Debug", "[UI] *** done ***");
+            foreach (GamePlayer player in pokerTable.Players)
+            {
+                PokerGameService.Log("Debug", "[UI] " + player.Id + " " + player.User.DisplayName + " " + player.Position);
+            }
+
+            foreach (var player in pokerTable.Players)
+            {
+                // Explicitly set the Name property from the User's DisplayName
+                if (string.IsNullOrEmpty(player.Name) && player.User != null)
+                {
+                    player.Name = string.IsNullOrEmpty(player.User.DisplayName) ? "Player " + player.Position : player.User.DisplayName;
+                    PokerGameService.Log("Debug", $"[UI]  Set player name to: {player.Name}");
+                }
+            }
+
+            if (pokerTable.TimeRemaining <= 0)
+            {
+               PokerGameService.Log("Debug", "[UI] No time remaining!!");
+            }
+            else
+            {
+                PokerGameService.Log("Debug", "[UI] Time remaining ! " + pokerTable.TimeRemaining);
+            }
+
+            gameSnapshot = pokerTable.GetGameSnapshot();
+            PokerGameService.Log("Debug", $"[UI]  Loaded game snapshot: GameState={gameSnapshot.GameState}, Players={gameSnapshot.Players.Count}, TablePositions={string.Join(",", gameSnapshot.TablePositions)}, timeRemaining={gameSnapshot.TimeRemaining}");
+            
+            // Find current player in the game
+            if (gameSnapshot != null && gameSnapshot.GameState != GameState.NOT_STARTED)
+            {
+                FindCurrentPlayerInGame();
+                CheckIfUsersTurn();
+                
+                // Set up timer if a player is currently active
+                if (gameSnapshot.GameState != GameState.NOT_STARTED && 
+                    gameSnapshot.GameState != GameState.END && 
+                    !gameSnapshot.BetsMade)
+                {
+                    isGamePaused = gameSnapshot.IsGamePaused;
+                    PokerGameService.RefreshTimer(pokerTable.Id, pokerTable.TimeRemaining);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", "[UI] Error loading table data: {ex.Message}");
+            NavigationManager.NavigateTo("/poker/tables");
+        }
+    }
+
+    private async Task SetupSignalRConnection()
+    {
+        try
+        {
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl(NavigationManager.ToAbsoluteUri("/pokerhub"))
+                .WithAutomaticReconnect()
+                .Build();
+
+            hubConnection.On<SerializableGameSnapshot>("GameUpdate", OnGameUpdate);
+            hubConnection.On<string, string, string, decimal>("PlayerAction", OnPlayerAction);
+            hubConnection.On<int, bool>("TimerUpdate", OnTimerUpdate);
+
+            hubConnection.Closed += async (error) => 
+            {
+                PokerGameService.Log("Error", $"[SignalR - UI] Connection closed with error: {error?.Message}");
+                await Task.Delay(new Random().Next(0, 5) * 1000);
+                await SetupSignalRConnection();
+            };
+
+            await hubConnection.StartAsync();
+            await hubConnection.InvokeAsync("JoinTableGroup", TableId);
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error setting up SignalR: {ex.Message}");
+            // Consider showing this error to the user
+        }
+    }
+
+    private void OnGameUpdate(SerializableGameSnapshot serSnapshot)
+    {
+        try
+        {
+            PokerGameService.Log("Debug", $"[UI] Received game update via SignalR. GameState: {serSnapshot.GameState}, Players: {serSnapshot.Players.Count}");
+
+            InvokeAsync(async () => {
+                try {
+                    timeRemaining = serSnapshot.TimeRemaining;
+
+                    PokerGameService.Log("Debug", "[UI] game update, is paused = " + isGamePaused + " snapshot game paused = " + serSnapshot.IsGamePaused);
+                    if (serSnapshot.IsGamePaused != isGamePaused)
+                    {
+                        Console.WriteLine("setting isGamePaused");
+                        isGamePaused = serSnapshot.IsGamePaused;
+                    } 
+
+                    // Only reload if this is a major state change
+                    if (gameSnapshot == null || 
+                        gameSnapshot.Players.Count != serSnapshot.Players.Count || 
+                        gameSnapshot.GameState.ToString() != serSnapshot.GameState)
+                    {
+                        PokerGameService.Log("Debug", "[UI] Major state change detected - updating from snapshot - currentPlayer: " + currentPlayerIndex);
+                        UpdateFromSnapshot(serSnapshot);
+                        if (pokerTable.Game == null && gameSnapshot.GameState != GameState.NOT_STARTED)
+                        {
+                            PokerGameService.Log("Debug", "[UI] After update from snapshot, game is null but game state has started, trying to loadTableData instead of ui refresh");
+                            await LoadTableData();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // Update local state from snapshot
+                        PokerGameService.Log("Debug", "[UI] Updating local state from received snapshot - currentPlayer: " + currentPlayerIndex);
+                        PokerGameService.Log("Debug", "[UI] serSnapshot: gs- " + serSnapshot.GameState + ", p- " + serSnapshot.Players + ", idx- " + serSnapshot.CurrentTurnPlayerIndex + ", cc- " + serSnapshot.CommunityCards.Count);
+                        await UpdateLocalGameState(serSnapshot.ToGameStateUpdate());
+                    }
+                    
+                    PokerGameService.Log("Debug", "[UI] gamesnapshot: state - " + gameSnapshot.GameState + ", turnPlayer - " + gameSnapshot.TurnPlayer?.User.DisplayName + ", cards - " + gameSnapshot.CommunityCards.Count +
+                        ", players - " + gameSnapshot.Players.Count + ", pot - " + gameSnapshot.Pot.Amount + ", winners - " + gameSnapshot.AllWinners.Count);
+                   PokerGameService.Log("Debug", "[UI] pokerTable: table - " + pokerTable + ", game - " + pokerTable.Game + ", players - " + pokerTable.Players.Count + ", owner - " + pokerTable.Owner);
+
+                    await InvokeAsync(StateHasChanged);
+
+                    if (isAutoPlayOn && gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED)
+                    {
+                        if (gameSnapshot.GameState == GameState.END)
+                        {
+                            await Task.Delay(5000);
+                            StartNextGame();
+                            return;
+                        }
+
+                        int delay = gameSnapshot.GameState == GameState.RIVER ? 500 : 1000;
+                        await Task.Delay(delay);
+                        PlayNextStep();
+                        return;
+                    }
+                }
+                catch (Exception ex) {
+                    PokerGameService.Log("Error", $"[UI] Error updating UI: {ex.Message} Update what you have? current player - " + currentPlayerIndex);
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error processing game update: {ex.Message}");
+        }
+    }
+
+    private void UpdateFromSnapshot(SerializableGameSnapshot serSnapshot)
+    {
+       PokerGameService.Log("Debug", $"[UI] Updating from snapshot: GameState={serSnapshot.GameState}, Players={serSnapshot.Players.Count}");
+        
+        if (gameSnapshot == null)
+        {
+            gameSnapshot = new GameSnapshot(null)
+            {
+                TableId = serSnapshot.TableId,
+                BigBlind = serSnapshot.BigBlind,
+                BetsMade = serSnapshot.BetsMade,
+                TablePositions = serSnapshot.TablePositions
+            };
+            PokerGameService.Log("Debug", "[UI] Snapshot was null!!!");
+        }
+        
+        gameSnapshot.GameState = Enum.Parse<GameState>(serSnapshot.GameState);
+        gameSnapshot.BetsMade = serSnapshot.BetsMade;
+        gameSnapshot.CurrentBet = serSnapshot.CurrentBet;
+        gameSnapshot.TablePositions = serSnapshot.TablePositions;
+        gameSnapshot.SidePotAmounts = serSnapshot.SidePotAmounts;
+        
+        gameSnapshot.CommunityCards = serSnapshot.CommunityCards
+            .Select(c => SerializableGameData.GetDeserializableCard(c))
+            .ToList();
+        
+        if (gameSnapshot.Pot == null)
+        {
+            gameSnapshot.Pot = new Pot(new List<int>());
+        }
+        gameSnapshot.Pot.Amount = serSnapshot.PotAmount;
+
+        gameSnapshot.AllWinners = SerializableGameData.GetDeserializablePotWinners(serSnapshot.Winners, gameSnapshot.Players);
+        
+        // Update players - CRITICAL: Also update pokerTable.Players to keep them in sync
+        var updatedPlayers = new List<GamePlayer>();
+        
+        // Create or update pokerTable if needed
+        if (pokerTable == null)
+        {
+            PokerGameService.Log("Debug", "[UI] Update from snapshot -- pokerTable is null!!!");
+            
+            pokerTable = new PokerTable
+            {
+                Id = serSnapshot.TableId,
+                BigBlind = serSnapshot.BigBlind,
+                SmallBlind = serSnapshot.SmallBlind,
+                TablePositions = serSnapshot.TablePositions,
+            };
+
+            pokerTable.Players = new List<GamePlayer>();
+        }
+        
+        // Clear and rebuild pokerTable.Players list
+        pokerTable.Players.Clear();
+        
+        foreach (var serPlayer in serSnapshot.Players)
+        {
+            GamePlayer updatedPlayer = SerializableGameData.GetDeserializableGamePlayer(serPlayer);
+            var existingPlayer = gameSnapshot.Players.FirstOrDefault(p => p.Id == serPlayer.Id);
+
+            if (existingPlayer != null)
+            {
+                updatedPlayer.PokerTableId = existingPlayer.PokerTableId;
+                updatedPlayer.JoinedAt = existingPlayer.JoinedAt;
+                updatedPlayer.User = existingPlayer.User;
+            }
+            else
+            {
+                updatedPlayer.PokerTableId = serSnapshot.TableId;
+                // updatedPlayer.JoinedAt = ??
+                updatedPlayer.User = new ApplicationUser
+                {
+                    Id = serPlayer.UserId,
+                    DisplayName = serPlayer.Name
+                };
+            }
+            
+            updatedPlayers.Add(updatedPlayer);
+        }
+        
+        pokerTable.Players = updatedPlayers;
+        gameSnapshot.Players = updatedPlayers;
+        
+        // Update turn player
+        if (serSnapshot.CurrentTurnPlayerIndex >= 0 && serSnapshot.CurrentTurnPlayerIndex < gameSnapshot.Players.Count)
+        {
+            if (gameSnapshot.Players[serSnapshot.CurrentTurnPlayerIndex].Hand.Count > 0)
+            {
+                gameSnapshot.TurnPlayer = gameSnapshot.Players[serSnapshot.CurrentTurnPlayerIndex];
+                PokerGameService.Log("Debug", $"[UI] Turn player set to: {gameSnapshot.TurnPlayer.User.DisplayName} (Index: {serSnapshot.CurrentTurnPlayerIndex})");
+            }
+            else 
+            {
+                PokerGameService.Log("Debug", "[UI] ------SerSnapshot turn player is not in the game------");
+            }
+        }
+        else
+        {
+            PokerGameService.Log("Debug", $"[UI] No turn player set. Index: {serSnapshot.CurrentTurnPlayerIndex}, Players: {gameSnapshot.Players.Count}");
+            gameSnapshot.TurnPlayer = null;
+        }
+        
+        if (pokerTable.Game != null) 
+        {
+            if (pokerTable != null && gameSnapshot.TurnPlayer != null)
+            {
+                PokerGameService.Log("Debug", "[UI] Setting turn player position to: " + gameSnapshot.Players.IndexOf(gameSnapshot.TurnPlayer) + " using " + gameSnapshot.TurnPlayer.User.DisplayName);
+                pokerTable.Game.CurrentTurnPlayerPosition = gameSnapshot.Players.IndexOf(gameSnapshot.TurnPlayer);
+            }
+
+            pokerTable.Game.State = gameSnapshot.GameState;
+        }
+        else
+        {
+            PokerGameService.Log("Debug", "[UI] update from snapshot, game is null");
+        }
+        
+        var ownerPlayer = pokerTable.Players.FirstOrDefault(p => p.UserId == userId);
+        isTableOwner = pokerTable.OwnerId == userId;
+        FindCurrentPlayerInGame();
+        CheckIfUsersTurn();
+        
+        PokerGameService.Log("Debug", $"[UI] Updated from snapshot: pokerTable.Players.Count={pokerTable.Players.Count}, gameSnapshot.Players.Count={gameSnapshot.Players.Count}");
+    }
+
+    private async Task UpdateLocalGameState(GameStateUpdate update)
+    {
+        if (gameSnapshot == null)
+        {
+            // Need to load the full table first
+            PokerGameService.Log("Debug", "[UI] no existing game snapshot, loading table data");
+            await LoadTableData();
+            return;
+        }
+
+        PokerGameService.Log("Debug", $"[UI] local game state updating betsMade: " + update.BetsMade);
+        gameSnapshot.GameState = update.GameState;
+        gameSnapshot.BetsMade = update.BetsMade;
+        gameSnapshot.CurrentBet = update.CurrentBet;
+        gameSnapshot.CommunityCards = update.CommunityCards;
+        
+        if (gameSnapshot.Pot == null)
+        {
+            gameSnapshot.Pot = new Pot(new List<int>());
+        }
+
+        gameSnapshot.Pot.Amount = update.PotAmount;
+        PokerGameService.Log("Debug", $"[UI] Updated pot amount to: ${update.PotAmount}");
+        gameSnapshot.SidePotAmounts = update.SidePotAmounts;
+
+        for (int i = 0; i < update.Players.Count; i++)
+        {
+            var updatePlayer = update.Players[i];
+            var existingPlayer = gameSnapshot.Players.FirstOrDefault(p => p.Id == updatePlayer.Id);
+            
+            if (existingPlayer != null)
+            {
+                existingPlayer.Stack = updatePlayer.Stack;
+                existingPlayer.CurrentBet = updatePlayer.CurrentBet;
+                existingPlayer.HasFolded = updatePlayer.HasFolded;
+                existingPlayer.IsInGame = updatePlayer.IsInGame;
+                existingPlayer.IsSeated = updatePlayer.IsSeated;
+                existingPlayer.PokerPosition = updatePlayer.PokerPosition;
+                existingPlayer.IsDealer = updatePlayer.IsDealer;
+                existingPlayer.Hand = updatePlayer.Hand;
+            }
+        }
+
+        gameSnapshot.TablePositions = update.TablePositions;
+        
+        // Update turn player
+        if (update.CurrentTurnPlayerIndex >= 0 && update.CurrentTurnPlayerIndex < gameSnapshot.Players.Count)
+        {
+            gameSnapshot.TurnPlayer = gameSnapshot.Players[update.CurrentTurnPlayerIndex];
+        }
+        
+        CheckIfUsersTurn();
+    }
+
+    private void OnPlayerAction(string playerName, string position, string actionStr, decimal amount)
+    {
+        if (Enum.TryParse<PlayerAction>(actionStr, out var action))
+        {
+            PokerGameService.Log("Debug", $"[UI] {playerName} {action} {(amount > 0 ? $"${amount}" : "")} this was received from the hub, but we are doing nothing?");
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnTimerUpdate(int remainingSeconds, bool isPaused)
+    {
+        timeRemaining = remainingSeconds;
+        isGamePaused = isPaused;
+        
+        // If the timer reaches zero, auto-handle timeout
+        if (timeRemaining <= 0 && !isPaused && isCurrentPlayer)
+        {
+            InvokeAsync(() => HandleTimeOut());
+        }
+        
+        InvokeAsync(StateHasChanged);
+    }
+    
+    private async Task PauseGame()
+    {
+        await PokerGameService.PauseTimer(TableId);
+    }
+
+    private async Task ResumeGame()
+    {
+        await PokerGameService.ResumeTimer(TableId);
+    }
+
+    private async Task RestartTimer()
+    {
+        int seconds = pokerTable?.TimerSeconds ?? 30;
+        PokerGameService.Log("Debug", "[UI] calling restart timer with " + seconds);
+        await PokerGameService.ResetTimer(TableId, seconds);
+    }
+
+    private async Task SetAutoPlay()
+    {
+        PokerGameService.Log("Debug", "[UI] Setting auto play from " + isAutoPlayOn + " -> " + !isAutoPlayOn);
+        isAutoPlayOn = !isAutoPlayOn;
+        if (isAutoPlayOn && gameSnapshot != null && gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED)
+        {
+            int delay = 500;
+            if (gameSnapshot.GameState == GameState.END)
+            {
+                await Task.Delay(delay);
+                StartNextGame();
+                return;
+            }
+
+            await Task.Delay(delay);
+            PlayNextStep();
+            return;
+        }
+    }
+
+    private string GetActionText(PlayerAction action, decimal amount)
+    {
+        return action switch
+        {
+            PlayerAction.CHECK => "checks",
+            PlayerAction.CALL => "calls",
+            PlayerAction.FOLD => "folds",
+            PlayerAction.BET => amount > 0 ? $"bets ${amount}" : "bets",
+            _ => action.ToString()
+        };
+    }
+
+    private void OnChatMessage(string userName, string message)
+    {
+        // Implement chat functionality
+    }
+    
+    private void FindCurrentPlayerInGame()
+    {
+        PokerGameService.Log("Debug", "[UI] Find Current Player In Game");
+        if (gameSnapshot == null || gameSnapshot.Players == null)
+        {
+            currentPlayerIndex = -1;
+            return;
+        }
+        
+        // Find the user's player in the game snapshot
+        for (int i = 0; i < gameSnapshot.Players.Count; i++)
+        {
+            var player = gameSnapshot.Players[i];
+            if (player.UserId == userId)
+            {
+                currentPlayerIndex = i;
+                PokerGameService.Log("Debug", $"[UI] Found current player at index {i}: {player.Name}");
+                return;
+            }
+        }
+        
+        PokerGameService.Log("Debug", $"[UI] Current player not found in game. UserId: {userId}");
+        currentPlayerIndex = -1;
+    }
+    
+    private void CheckIfUsersTurn()
+    {
+        if (gameSnapshot == null || currentPlayerIndex < 0 || gameSnapshot.TurnPlayer == null)
+        {
+            isCurrentPlayer = false;
+            return;
+        }
+        
+        isCurrentPlayer = gameSnapshot.Players[currentPlayerIndex] == gameSnapshot.TurnPlayer;
+        
+        if (!isCurrentPlayer && currentPlayerIndex >= 0 && currentPlayerIndex < gameSnapshot.Players.Count)
+        {
+            isCurrentPlayer = gameSnapshot.Players[currentPlayerIndex].Id == gameSnapshot.TurnPlayer.Id;
+        }
+        
+        if (!isCurrentPlayer && currentPlayerIndex >= 0 && currentPlayerIndex < gameSnapshot.Players.Count)
+        {
+            isCurrentPlayer = gameSnapshot.Players[currentPlayerIndex].UserId == gameSnapshot.TurnPlayer.UserId;
+        }
+        
+        PokerGameService.Log("Debug", $"[UI] CheckIfUsersTurn: {isCurrentPlayer}, CurrentIndex: {currentPlayerIndex}, TurnPlayer: {gameSnapshot.TurnPlayer?.User.DisplayName ?? "None"}");
+    }
+
+    private async void HandleTimeOut()
+    {
+        if (gameSnapshot == null || !isCurrentPlayer)
+            return;
+            
+        if (gameSnapshot.CurrentBet > 0)
+            await HandlePlayerAction(new PlayerActionEventArgs{Action = PlayerAction.FOLD});
+        else
+            await HandlePlayerAction(new PlayerActionEventArgs{Action = PlayerAction.CHECK});
+    }
+
+    private async Task StartGame()
+    {
+        try
+        {
+            gameSnapshot = await PokerGameService.StartGameAsync(TableId, true);
+            CheckIfUsersTurn();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error starting game in play table: {ex.Message}");
+        }
+    }
+
+    private async Task PlayNextStep()
+    {
+        try
+        {
+            gameSnapshot = await PokerGameService.PlayNextStep(TableId);
+            
+            if (gameSnapshot.GameState != GameState.END && !gameSnapshot.BetsMade)
+            {
+                PokerGameService.Log("Debug", $"[UI] play next step - restart timer then resume");
+                await RestartTimer();
+                await ResumeGame();
+            }
+            else if (gameSnapshot.GameState == GameState.END)
+            {
+                if (isAutoPlayOn)
+                {
+                    await Task.Delay(5000);
+                    StartNextGame();
+                    return;
+                }
+            }
+            
+            CheckIfUsersTurn();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error advancing game: {ex.Message}");
+        }
+    }
+    
+    private async Task HandlePlayerAction(PlayerActionEventArgs args)
+    {
+        if (gameSnapshot == null || !isCurrentPlayer || TableId == null)
+        {
+            PokerGameService.Log("Debug", "[UI] Cannot handle player action - not current player's turn");
+            return;
+        }
+        
+        try
+        {
+            if (pokerTable?.Game == null)
+            {
+               PokerGameService.Log("Debug", "[UI] Game not initialized properly");
+                await LoadTableData();
+                if (pokerTable?.Game == null)
+                {
+                    PokerGameService.Log("Debug", $"[UI] Still null after reload");
+                    return;
+                }
+                PokerGameService.Log("Debug", $"[UI] Maybe fine after reload? but returning anyways");
+                return;
+            }
+
+            await RestartTimer();
+            
+            decimal bet = args.Amount ?? 0;
+            PokerGameService.Log("Debug", $"[UI] Handling player action: {args.Action}, Bet: {bet}");
+            
+            gameSnapshot = await PokerGameService.HandleAction(TableId, userId, args.Action, bet);
+
+            if (gameSnapshot.BetsMade)
+            {
+                await PauseGame();
+            }
+
+            isCurrentPlayer = false;
+            await InvokeAsync(StateHasChanged);
+            if (isAutoPlayOn)
+            {
+                int delay = 1000;
+                if (gameSnapshot.GameState == GameState.RIVER)
+                {
+                    delay = 500;
+                }
+                await Task.Delay(delay);
+                PlayNextStep();
+            }
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error performing action: {ex.Message}");
+            await RestartTimer();
+        }
+    }
+    
+    private async Task StartNextGame()
+    {
+        try
+        {
+            gameSnapshot = await PokerGameService.StartGameAsync(TableId);
+            CheckIfUsersTurn();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error starting next game: {ex.Message}");
+        }
+    }
+    
+    private void HandlePositionSelected(int position)
+    {
+        PokerGameService.Log("Debug", $"[UI] Handle position selected: {position}");
+        if (pokerTable == null || gameSnapshot == null)
+        {
+            return;
+        }
+
+        var occupyingPlayer = pokerTable.Players.FirstOrDefault(p => p.Position == position && p.IsSeated);
+        if (occupyingPlayer != null)
+            return;
+
+        if (currentPlayerIndex >= 0)
+        {
+            var currentPlayer = pokerTable.Players.ToList()[currentPlayerIndex];
+            if (currentPlayer != null && currentPlayer.IsSeated)
+                return;
+        }
+            
+        selectedPosition = position;
+        showPositionModal = true;
+        StateHasChanged();
+    }
+    
+    private async Task JoinPosition()
+    {
+        try
+        {
+            if (pokerTable == null || selectedPosition <= 0)
+                return;
+                
+            await PokerGameService.JoinTableAsync(userId, pokerTable.TableCode, selectedPosition, joinPositionModel.Stack);
+            HidePositionModal();
+            await LoadTableData();
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error joining position: {ex.Message}");
+        }
+    }
+
+    private void ShowTableSettingsModal() 
+    { 
+        showTableSettings = true;
+        StateHasChanged();
+    }
+    
+    private void HideTableSettingsModal() 
+    { 
+        showTableSettings = false;
+        StateHasChanged();
+    }
+    
+    private void ShowAddChipsModal() 
+    { 
+        showAddChipsModal = true;
+        StateHasChanged();
+    }
+    
+    private void HideAddChipsModal() 
+    { 
+        showAddChipsModal = false;
+        StateHasChanged();
+    }
+    
+    private void HidePositionModal() 
+    {
+        showPositionModal = false;
+        selectedPosition = 0;
+        StateHasChanged();
+    }
+    
+    private async Task UpdateTableSettings()
+    {
+        if (pokerTable == null)
+            return;
+            
+        try
+        {
+            await using var dbContext = await DbContextFactory.CreateDbContextAsync();
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+            
+            var table = await PokerGameService.GetCompleteTable(dbContext, pokerTable.Id, true);
+            table.Name = tableSettings.Name;
+            table.BigBlind = tableSettings.BigBlind;
+            table.SmallBlind = tableSettings.BigBlind / 2;
+            table.TimerSeconds = tableSettings.TimerSeconds;
+            pokerTable.TimerSeconds = table.TimerSeconds;
+            
+            await dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            HideTableSettingsModal();
+            await RestartTimer();
+            await PokerGameService.GetAndBroadcastFreshSnapshot(dbContext, table.Id);
+            await LoadTableData();
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error updating table settings: {ex.Message}");
+        }
+    }
+    
+    private async Task AddChips()
+    {
+        if (pokerTable == null || currentPlayerIndex < 0)
+            return;
+            
+        try
+        {
+            await PokerGameService.AddChipsAsync(TableId, userId, addChipsModel.Amount);
+            HideAddChipsModal();
+            await LoadTableData();
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error adding chips: {ex.Message}");
+        }
+    }
+    
+    private async Task StandUp()
+    {
+        if (pokerTable == null)
+            return;
+            
+        try
+        {
+            await PokerGameService.StandUpAsync(TableId, userId);
+            await LoadTableData();
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error standing up: {ex.Message}");
+        }
+    }
+    
+    private async Task SitDown()
+    {
+        if (pokerTable == null)
+            return;
+            
+        try
+        {
+            await PokerGameService.SitDownAsync(TableId, userId);
+            await LoadTableData();
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error sitting down: {ex.Message}");
+        }
+    }
+    
+    private async Task LeaveTable()
+    {
+        if (pokerTable == null)
+            return;
+            
+        try
+        {
+            await PokerGameService.LeaveTableAsync(TableId, userId);
+            NavigationManager.NavigateTo("/poker/tables");
+        }
+        catch (Exception ex)
+        {
+            PokerGameService.Log("Error", $"[UI] Error leaving table: {ex.Message}");
+        }
+        
+    }
+
+    public async ValueTask DisposeAsync()
+    {        
+        // Disconnect from SignalR
+        if (hubConnection != null)
+        {
+            try
+            {
+                await hubConnection.InvokeAsync("LeaveTableGroup", TableId);
+                await hubConnection.DisposeAsync();
+            }
+            catch (Exception)
+            {
+                // Ignore errors during disposal
+            }
+        }
+    }
+}

@@ -1,0 +1,105 @@
+
+@namespace PokerApp.Components.Shared
+
+<HeadContent>
+    <link href="css/poker-table.css" rel="stylesheet" />
+    <link href="css/cards.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="player-seat @PositionClass @(IsActive ? "active" : "inactive") @(IsCurrentTurn ? "current-turn" : "")" @onclick="HandlePositionClick">
+    @if (Player != null)
+    {
+        <div class="player-info">
+            <div class="player-name">@Player.Name</div>
+            <div class="player-stack">$@Player.Stack</div>
+            
+            @if (Player.CurrentBet > 0)
+            {
+                <div class="player-bet">$@Player.CurrentBet</div>
+            }
+            
+            @if (Player.IsDealer)
+            {
+                <div class="dealer-button">D</div>
+            }
+            
+            @if (Player.PokerPosition == PokerPosition.SmallBlind)
+            {
+                <div class="blind-indicator small-blind">SB</div>
+            }
+            else if (Player.PokerPosition == PokerPosition.BigBlind)
+            {
+                <div class="blind-indicator big-blind">BB</div>
+            }
+            
+            <div class="player-cards">
+                <div class="cards-container">
+                    @if (Player.Hand.Count == 2)
+                    {
+                        <CardComponent CardModel="@Player.Hand[0]" Visible="@(IsCurrentUser)" /> // && !Player.HasFolded)" />
+                        <CardComponent CardModel="@Player.Hand[1]" Visible="@(IsCurrentUser)" /> // && !Player.HasFolded)" />
+                    }
+                    else if (ShowPlaceholderCards)
+                    {
+                        <div class="card-placeholder"></div>
+                        <div class="card-placeholder"></div>
+                    }
+                </div>
+            </div>
+            
+            @if (Player.HasFolded)
+            {
+                <div class="player-status folded">Folded</div>
+            }
+            else if (!Player.IsInGame)
+            {
+                <div class="player-status sitting-out">Sitting Out</div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="empty-seat">
+            <div class="position-number">@Position</div>
+            <div class="position-label">Empty</div>
+        </div>
+    }
+</div>
+
+
+@code {
+    [Parameter]
+    public GamePlayer? Player { get; set; }
+    
+    [Parameter]
+    public int Position { get; set; }
+    
+    [Parameter]
+    public bool IsCurrentUser { get; set; }
+    
+    [Parameter]
+    public bool IsCurrentTurn { get; set; }
+    
+    [Parameter]
+    public bool IsActive { get; set; } = true;
+    
+    [Parameter]
+    public bool ShowPlaceholderCards { get; set; } = true;
+    
+    [Parameter]
+    public EventCallback<int> OnPositionSelected { get; set; }
+    
+    private string PositionClass => $"position-{Position}";
+    
+    private async Task HandlePositionClick()
+    {
+        if (Player == null)
+        {
+            Console.WriteLine("Position clicked " + Position);
+            await OnPositionSelected.InvokeAsync(Position);
+        }
+        else{
+            Console.WriteLine("player is not null at position " + Position);
+        }
+    }
+}

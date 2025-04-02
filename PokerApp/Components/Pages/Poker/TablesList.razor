@@ -1,0 +1,80 @@
+@page "/poker/tables"
+@rendermode InteractiveServer
+
+@using Microsoft.EntityFrameworkCore
+@using PokerApp.Data
+@using PokerApp.Models
+@using System.Net.Http
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@inject ApplicationDbContext DbContext
+@inject NavigationManager NavigationManager
+
+<PageTitle>Poker Tables</PageTitle>
+
+<h3>Available Poker Tables</h3>
+
+@if (tables == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (!tables.Any())
+{
+    <p>No active tables found. <a href="/poker/create">Create a new table</a></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Table Name</th>
+                    <th>Owner</th>
+                    <th>Players</th>
+                    <th>Blinds</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var table in tables)
+                {
+                    <tr>
+                        <td>@table.Name</td>
+                        <td>@table.Owner.DisplayName</td>
+                        <td>@table.Players.Count(p => p.IsSeated) / 10</td>
+                        <td>@table.SmallBlind / @table.BigBlind</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" @onclick="() => NavigateToJoinTable(table.Id)">Join</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="mt-3">
+    <a href="/" class="btn btn-secondary">Back to Home</a>
+</div>
+
+@code {
+    private List<PokerTable>? tables;
+
+    protected override async Task OnInitializedAsync()
+    {
+        tables = await DbContext.PokerTables
+            .Include(t => t.Owner)
+            .Include(t => t.Players)
+            .Where(t => t.IsActive)
+            .ToListAsync();
+    }
+
+    private void NavigateToJoinTable(string tableId)
+    {
+        NavigationManager.NavigateTo($"/poker/table/{tableId}");
+    }
+}

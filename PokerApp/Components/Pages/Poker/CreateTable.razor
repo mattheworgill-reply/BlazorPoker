@@ -1,0 +1,127 @@
+@page "/poker/create"
+@rendermode InteractiveServer
+
+@inject PokerGameService PokerGameService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Create Poker Table</PageTitle>
+
+<h3>Create a New Poker Table</h3>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <Microsoft.AspNetCore.Components.Forms.EditForm FormName="create-table" Model="tableModel"
+                    OnValidSubmit="CreateTableAsync" Antiforgery="false">
+                    @* <AntiforgeryToken /> *@
+                    <Microsoft.AspNetCore.Components.Forms.DataAnnotationsValidator />
+                    <Microsoft.AspNetCore.Components.Forms.ValidationSummary />
+
+                    <div class="mb-3">
+                        <label for="tableName" class="form-label">Table Name</label>
+                        <Microsoft.AspNetCore.Components.Forms.InputText id="tableName" @bind-Value="tableModel.Name"
+                            class="form-control" />
+                        <Microsoft.AspNetCore.Components.Forms.ValidationMessage For="@(() => tableModel.Name)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bigBlind" class="form-label">Big Blind</label>
+                        <Microsoft.AspNetCore.Components.Forms.InputNumber id="bigBlind"
+                            @bind-Value="tableModel.BigBlind" class="form-control" />
+                        <Microsoft.AspNetCore.Components.Forms.ValidationMessage For="@(() => tableModel.BigBlind)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="timer" class="form-label">Turn Timer (seconds)</label>
+                        <Microsoft.AspNetCore.Components.Forms.InputNumber id="timer"
+                            @bind-Value="tableModel.TimerSeconds" class="form-control" />
+                        <Microsoft.AspNetCore.Components.Forms.ValidationMessage
+                            For="@(() => tableModel.TimerSeconds)" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Create Table</button>
+                    <a href="/" class="btn btn-secondary">Cancel</a>
+                </Microsoft.AspNetCore.Components.Forms.EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private TableFormModel tableModel = new();
+    private string userId = string.Empty;
+
+    private class TableFormModel
+    {
+        [Required(ErrorMessage = "Table name is required")]
+        [StringLength(50, ErrorMessage = "Table name must be between 3 and 50 characters", MinimumLength = 3)]
+        public string Name { get; set; } = "My Poker Table";
+
+        [Required(ErrorMessage = "Big blind amount is required")]
+        [Range(1, 1000, ErrorMessage = "Big blind must be between 1 and 1000")]
+        public decimal BigBlind { get; set; } = 2;
+
+        public decimal SmallBlind => BigBlind / 2;
+
+        [Required(ErrorMessage = "Timer is required")]
+        [Range(10, 120, ErrorMessage = "Timer must be between 10 and 120 seconds")]
+        public int TimerSeconds { get; set; } = 30;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated ?? false)
+        {
+            var appUser = await UserManager.GetUserAsync(user);
+            if (appUser != null)
+            {
+                userId = appUser.Id;
+            }
+            else
+            {
+                NavigationManager.NavigateTo("Account/Login");
+            }
+        }
+        else
+        {
+            NavigationManager.NavigateTo("Account/Login");
+        }
+    }
+
+    private async Task CreateTableAsync()
+    {
+        var newTable = new PokerTable();
+        bool redirect = false;
+        try
+        {
+            newTable = await PokerGameService.CreateTableAsync(
+            userId,
+            tableModel.Name,
+            tableModel.BigBlind,
+            tableModel.TimerSeconds
+            );
+
+            @* await Task.Delay(100); *@
+
+            NavigationManager.NavigateTo($"poker/table/{newTable.Id}");
+            redirect = true;
+        }
+        catch (Exception ex)
+        {
+            // Handle error
+            Console.Error.WriteLine(ex);
+        }
+
+        @* if (redirect)
+        {
+            await InvokeAsync(() => NavigationManager.NavigateTo($"poker/table/{newTable.Id}"));
+        } *@
+
+    }
+}

@@ -1,0 +1,252 @@
+@page "/poker/table/{TableId}/join"
+@rendermode InteractiveServer
+
+@inject ApplicationDbContext DbContext
+@inject PokerGameService PokerGameService
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Join Table</PageTitle>
+
+@if (table == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h3>Join Table: @table.Name</h3>
+    <p>Table Code: @table.TableCode</p>
+    <p>Owner: @table.Owner.DisplayName</p>
+    <p>Blinds: @table.SmallBlind / @table.BigBlind</p>
+
+    <div class="poker-table-container">
+        <div class="poker-table">
+            @for (int i = 0; i < 10; i++)
+            {
+                int position = i + 1;
+                var occupyingPlayer = table.Players.FirstOrDefault(p => p.Position == position && p.IsSeated);
+
+                <div class="position position-@position @(occupyingPlayer != null ? "occupied" : "")"
+                    @onclick="() => SelectPosition(position)">
+                    @if (occupyingPlayer != null)
+                    {
+                        <div class="player-info">
+                            <div class="player-name">@occupyingPlayer.User.DisplayName</div>
+                            <div class="player-stack">$@occupyingPlayer.Stack</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="position-number">@position</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (selectedPosition > 0)
+    {
+        <div class="join-controls mt-3">
+            <h4>Join at Position @selectedPosition</h4>
+
+            <EditForm Model="@joinModel" OnValidSubmit="JoinTableAtPosition">
+                <AntiforgeryToken />
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label for="stack" class="form-label">Starting Stack</label>
+                    <InputNumber id="stack" @bind-Value="joinModel.Stack" class="form-control" />
+                    <ValidationMessage For="@(() => joinModel.Stack)" />
+                </div>
+
+                <button type="submit" class="btn btn-success">Sit Down</button>
+                <button class="btn btn-secondary" @onclick="CancelSelection">Cancel</button>
+            </EditForm>
+        </div>
+    }
+}
+
+<div class="mt-3">
+    <a href="/poker/tables" class="btn btn-secondary">Back to Tables</a>
+</div>
+
+@* <style>
+    .poker-table-container {
+        display: flex;
+        justify-content: center;
+        margin: 2rem 0;
+    }
+    
+    .poker-table {
+        width: 800px;
+        height: 400px;
+        background-color: green;
+        border-radius: 200px;
+        position: relative;
+        border: 10px solid #8B4513;
+    }
+    
+    .position {
+        width: 80px;
+        height: 80px;
+        background-color: rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        position: absolute;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .position:hover {
+        background-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+    }
+    
+    .occupied {
+        background-color: rgba(0, 0, 0, 0.6);
+        cursor: not-allowed;
+    }
+    
+    .occupied:hover {
+        transform: none;
+    }
+    
+    .position-number {
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+    }
+    
+    .player-info {
+        color: white;
+        text-align: center;
+    }
+    
+    .player-name {
+        font-weight: bold;
+        font-size: 14px;
+    }
+    
+    .player-stack {
+        font-size: 12px;
+    }
+    
+    /* Position placements */
+    .position-1 { top: 0; left: 50%; transform: translateX(-50%); }
+    .position-2 { top: 10%; left: 80%; }
+    .position-3 { top: 40%; left: 90%; }
+    .position-4 { top: 70%; left: 80%; }
+    .position-5 { bottom: 0; left: 50%; transform: translateX(-50%); }
+    .position-6 { top: 70%; left: 20%; }
+    .position-7 { top: 40%; left: 10%; }
+    .position-8 { top: 10%; left: 20%; }
+    .position-9 { top: 25%; left: 30%; }
+    .position-10 { top: 25%; left: 70%; }
+</style> *@
+
+@code {
+    [Parameter]
+    public string? TableId { get; set; }
+
+    private PokerTable? table;
+    private int selectedPosition = 0;
+    private string userId = string.Empty;
+
+    private class JoinTablePositionModel
+    {
+        [Required(ErrorMessage = "Starting stack is required")]
+        [Range(10, 1000, ErrorMessage = "Stack must be between 10 and 1000")]
+        public decimal Stack { get; set; } = 100;
+    }
+
+    private JoinTablePositionModel joinModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get current user
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated ?? false)
+        {
+            var appUser = await UserManager.GetUserAsync(user);
+            if (appUser != null)
+            {
+                userId = appUser.Id;
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                return;
+            }
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/Identity/Account/Login", true);
+            return;
+        }
+
+        // Load table info
+        if (string.IsNullOrEmpty(TableId))
+        {
+            NavigationManager.NavigateTo("/poker/tables");
+            return;
+        }
+
+        table = await DbContext.PokerTables
+        .Include(t => t.Owner)
+        .Include(t => t.Players)
+        .ThenInclude(p => p.User)
+        .FirstOrDefaultAsync(t => t.Id == TableId && t.IsActive);
+
+        if (table == null)
+        {
+            NavigationManager.NavigateTo("/poker/tables");
+        }
+        else
+        {
+            table.Players = [.. table.Players.OrderBy(p => p.Position)];
+        }
+    }
+
+    private void SelectPosition(int position)
+    {
+        // Check if position is occupied
+        if (table?.Players.Any(p => p.Position == position && p.IsSeated) ?? true)
+        {
+            return;
+        }
+
+        selectedPosition = position;
+    }
+
+    private void CancelSelection()
+    {
+        selectedPosition = 0;
+    }
+
+    private async Task JoinTableAtPosition()
+    {
+        if (string.IsNullOrEmpty(TableId) || selectedPosition <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            // Join the table at selected position
+            await PokerGameService.JoinTableAsync(userId, table.TableCode, selectedPosition, joinModel.Stack);
+
+            // Navigate to the table
+            NavigationManager.NavigateTo($"/poker/table/{TableId}");
+        }
+        catch (Exception ex)
+        {
+            // Handle errors
+            Console.Error.WriteLine(ex);
+        }
+    }
+}

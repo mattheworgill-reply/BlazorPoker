@@ -1,0 +1,40 @@
+
+@namespace PokerApp.Components.Shared
+
+<HeadContent>
+    <link href="css/poker-table.css" rel="stylesheet" />
+    <link href="css/cards.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="community-cards">
+    @if (Cards.Any())
+    {
+        foreach (var card in Cards)
+        {
+            <CardComponent CardModel="@card" Visible="true" />
+        }
+    }
+</div>
+
+<style>
+    .community-cards {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin: 10px 0;
+        min-height: 90px;
+    }
+    
+    .no-cards {
+        color: black;
+        font-style: italic;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public List<Card> Cards { get; set; } = new();
+}

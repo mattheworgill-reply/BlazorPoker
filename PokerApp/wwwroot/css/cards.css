@@ -1,0 +1,111 @@
+.playing-card {
+    width: 60px;
+    height: 90px;
+    border-radius: 5px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    position: relative;
+    display: inline-block;
+    margin: 2px;
+    user-select: none;
+}
+
+/* .player-seat .playing-card {
+    color: initial;
+} */
+
+/* .player-seat .playing-card .card-rank {
+    color: black !important;
+} */
+
+.card-front {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    /* background-color: white; */
+}
+
+.card-corner {
+    position: absolute;
+    font-size: 14px;
+    line-height: 1;
+    text-align: center;
+    z-index: 2;
+}
+
+.top-left {
+    top: 5px;
+    left: 5px;
+}
+
+.bottom-right {
+    bottom: 5px;
+    right: 5px;
+    transform: rotate(180deg);
+}
+
+.card-rank {
+    font-weight: bold;
+    color: black; 
+    display: block; 
+    font-size: 14px;
+    visibility: visible !important;
+}
+
+.card-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 30px;
+}
+
+
+.card-back {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background-color: #0066cc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.card-pattern {
+    width: 50px;
+    height: 80px;
+    border: 2px solid #003366;
+    border-radius: 3px;
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 5px,
+        #0055aa 5px,
+        #0055aa 10px
+    );
+}
+/* 
+.player-cards .playing-card {
+    transform: scale(1); 
+}
+
+
+.winner-cards .playing-card {
+    transform: scale(1); 
+} */
+
+.red {
+    color: #cc0000;
+}
+
+.black {
+    color: #000000;
+}
+
+.hidden {
+    cursor: default;
+}
+
+.visible {
+    cursor: pointer;
+}

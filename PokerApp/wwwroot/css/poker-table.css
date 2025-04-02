@@ -1,0 +1,599 @@
+.poker-table {
+    width: 900px;
+    height: 450px;
+    background-color: #006400;
+    border-radius: 225px / 112.5px;
+    border: 20px solid #8B4513;
+    position: relative;
+    margin: 0 auto;
+}
+
+.player-seat {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 14px;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.player-seat .playing-card .card-rank {
+    color: black !important;
+}
+
+.empty-seat {
+    cursor: pointer;
+}
+
+.empty-seat:hover {
+    background-color: rgba(0, 100, 0, 0.7);
+}
+
+.position-number {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.position-label {
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.player-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: -5px;
+}
+
+.player-name {
+    font-weight: bold;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+}
+
+.player-stack {
+    font-size: 14px;
+}
+
+.player-bet {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 15px;
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.dealer-button {
+    position: absolute;
+    top: auto;
+    right: auto;
+    left: auto;
+    bottom: auto;
+    width: 20px;
+    height: 20px;
+    background-color: white;
+    color: black;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.blind-indicator {
+    position: absolute;
+    bottom: auto;
+    left: auto;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.position-1 .dealer-button {
+    bottom: -15px;
+    left: 25%;
+    transform: translateX(-50%);
+}
+
+.position-1 .blind-indicator {
+    bottom: -15px;
+    left: 75%;
+    transform: translateX(-50%);
+}
+
+.position-1 .player-bet {
+    bottom: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.position-2 .dealer-button {
+    bottom: -15px;
+    left: 25%;
+    transform: translateX(-50%);
+}
+
+.position-2 .blind-indicator {
+    bottom: -15px;
+    left: 75%;
+    transform: translateX(-50%);
+}
+
+.position-2 .player-bet {
+    bottom: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.position-3 .dealer-button {
+    left: -20px;
+    top: 80%;
+    transform: translateY(-50%);
+}
+
+.position-3 .blind-indicator {
+    left: 5px;
+    top: 107%;
+    transform: translateY(-50%);
+}
+
+.position-3 .player-bet {
+    bottom: -15px;
+    left: -20%;
+    transform: translateX(-50%);
+}
+
+.position-4 .dealer-button {
+    left: 5px;
+    top: -5%;
+    transform: translateY(-50%);
+}
+
+.position-4 .blind-indicator {
+    left: -25px;
+    top: 20%;
+    transform: translateY(-50%);
+}
+
+.position-4 .player-bet {
+    top: -15px;
+    left: -20%;
+    transform: translateX(-50%);
+}
+
+.position-5 .dealer-button {
+    top: -15px;
+    left: 75%;
+    transform: translateX(-50%);
+}
+
+.position-5 .blind-indicator {
+    top: -15px;
+    left: 25%;
+    transform: translateX(-50%);
+}
+
+.position-5 .player-bet {
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.position-6 .dealer-button {
+    top: -15px;
+    left: 75%;
+    transform: translateX(-50%);
+}
+
+.position-6 .blind-indicator {
+    top: -15px;
+    left: 25%;
+    transform: translateX(-50%);
+}
+
+.position-6 .player-bet {
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.position-7 .dealer-button {
+    top: -15px;
+    left: 75%;
+    transform: translateX(-50%);
+}
+
+.position-7 .blind-indicator {
+    top: -15px;
+    left: 25%;
+    transform: translateX(-50%);
+}
+
+.position-7 .player-bet {
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.position-8 .dealer-button {
+    right: -20px;
+    top: 20%;
+    transform: translateY(-50%);
+}
+
+.position-8 .blind-indicator {
+    right: 0px;
+    top: -10%;
+    transform: translateY(-50%);
+}
+
+.position-8 .player-bet {
+    top: -15px;
+    right: -60%;
+    transform: translateX(-50%);
+}
+
+.position-9 .dealer-button {
+    right: 15px;
+    top: 105%;
+    transform: translateY(-50%);
+}
+
+.position-9 .blind-indicator {
+    right: -25px;
+    top: 80%;
+    transform: translateY(-50%);
+}
+
+.position-9 .player-bet {
+    bottom: -15px;
+    right: -60%;
+    transform: translateX(-50%);
+}
+
+.position-10 .dealer-button {
+    bottom: -15px;
+    left: 25%;
+    transform: translateX(-50%);
+}
+
+.position-10 .blind-indicator {
+    bottom: -15px;
+    left: 75%;
+    transform: translateX(-50%);
+}
+
+.position-10 .player-bet {
+    bottom: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.small-blind {
+    background-color: #3498db;
+}
+
+.big-blind {
+    background-color: #e74c3c;
+}
+
+.player-cards {
+    display: flex;
+    gap: 5px;
+    margin-top: -12px;
+    text-align: center;
+    transform: scale(0.7);
+    transform-origin: center center;
+}
+
+.card-placeholder {
+    width: 60px;
+    height: 90px;
+    border-radius: 5px;
+    background-color: #0066cc;
+    display: inline-block;
+}
+
+.player-status {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.folded {
+    background-color: rgba(231, 76, 60, 0.8);
+}
+
+.sitting-out {
+    background-color: rgba(52, 152, 219, 0.8);
+}
+
+.active {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.inactive {
+    opacity: 0.7;
+}
+
+.game-action-area {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+    position: relative;
+    width: 100%;
+}
+
+.player-cards-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+}
+
+.betting-controls-container {
+    flex: 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.game-controls, .betting-controls, .current-turn {
+    text-align: center;
+    margin: 5px 0;
+}
+
+.with-betting-controls .player-cards-container {
+    justify-content: flex-start; 
+}
+
+.betting-controls {
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    padding: 10px;
+    margin: 2px auto;
+    color: white;
+    max-width: 500px;
+    min-width: 300px;
+}
+
+.turn-status-container {
+    flex: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 10px;
+}
+
+.button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+}
+
+.input-group {
+    display: flex;
+    max-width: 200px;
+}
+
+.current-turn {
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+    animation: pulse 1.5s infinite;
+    font-size: 20px;
+    font-weight: bold;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 10px;
+    border-radius: 10px;
+    display: inline-block;
+    margin: 0 auto;
+}
+
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); }
+    50% { box-shadow: 0 0 25px rgba(255, 215, 0, 1); }
+    100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); }
+}
+
+.position-1 { top: 2%; left: 50%; transform: translateX(-50%); }
+.position-2 { top: 2%; right: 23%; transform: translateX(0); }
+.position-3 { top: 10%; right: 4%; transform: translateX(0); }
+.position-4 { bottom: 10%; right: 4%; transform: translateX(0); }
+.position-5 { bottom: 2%; right: 23%; transform: translateX(0); }
+.position-6 { bottom: 2%; left: 50%; transform: translateX(-50%); }
+.position-7 { bottom: 2%; left: 23%; transform: translateX(0); }
+.position-8 { bottom: 10%; left: 4%; transform: translateX(0); }
+.position-9 { top: 10%; left: 4%; transform: translateX(0); }
+.position-10 { top: 2%; left: 23%; transform: translateX(0); }
+
+.community-cards {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 0 10px 0 0;
+    min-height: 90px;
+    transform: scale(0.8);
+    flex: 3;
+}
+
+.community-area {
+    position: absolute;
+    top: 50%;
+    left: 48%;
+    transform: translate(-50%, -50%);
+    width: 400px; /* Fixed width to prevent shifting */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+/*    flex-wrap: wrap;*/
+}
+
+.pot-info {
+    text-align: center;
+    margin: 0 0 0 5px;
+    padding: 5px 10px;
+    font-size: 15px;
+    font-weight: bold;
+    color: white;
+    flex: 1;
+    min-width: 100px;
+}
+
+.poker-room {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.poker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: #2c3e50;
+    color: white;
+    border-radius: 5px;
+    margin-bottom: 1px;
+}
+
+.table-info {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.poker-table-container {
+    position: relative;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 1200px;
+}
+
+.winners-display {
+    margin: 5px auto;
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 10px;
+    max-width: 800px;
+}
+
+.winners-display .playing-card .card-rank {
+    color: black !important;
+}
+
+.winner-group {
+    margin-bottom: 20px;
+}
+
+.winner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 5px 0;
+}
+
+.winner-name {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.winning-cards {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.your-cards {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.your-cards h5 {
+    margin-bottom: 10px;
+    color: black;
+}
+
+.cards-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.player-controls {
+    text-align: center;
+    margin: 5px 0;
+}
+
+.player-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.timer {
+    color: #e74c3c;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.new-hand-controls {
+    margin-top: 5px;
+    text-align: center;
+}
+
+.owner-controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 5px;
+}
+
+.owner-controls button {
+    min-width: 140px;
+}
+
+@media (max-width: 992px) {
+    .game-action-area {
+        flex-direction: column;
+    }
+
+    .player-cards-container,
+    .betting-controls-container,
+    .turn-status-container {
+        justify-content: center;
+        margin: 5px 0;
+    }
+
+    .with-betting-controls .player-cards-container {
+        justify-content: center;
+    }
+}
