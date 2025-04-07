@@ -23,9 +23,9 @@ public class GameTimerService : BackgroundService
 
     public class GameTimerState
     {
-        public string TableId { get; set; }
-        public int RemainingSeconds { get; set; }
-        public bool IsPaused { get; set; }
+        public string TableId { get; set; } = "";
+        public int RemainingSeconds { get; set; } = 0;
+        public bool IsPaused { get; set; } = false;
         public DateTime LastUpdateTime { get; set; }
     }
 

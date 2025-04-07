@@ -39,7 +39,7 @@ namespace PokerApp.Models
             {
                 Id = player.Id,
                 UserId = player.UserId,
-                Name = player.User?.DisplayName ?? "Unknown",
+                Name = player.Name,
                 Position = player.Position,
                 Stack = player.Stack,
                 CurrentBet = player.CurrentBet,
@@ -184,10 +184,11 @@ namespace PokerApp.Models
                 serSnapshot.CommunityCards.Add(SerializableGameData.GetSerializableCard(card));
             }
 
-            // Convert players
+            Console.WriteLine("GameSnasphot to SerSnapshot");
             foreach (var player in snapshot.Players)
             {
                 serSnapshot.Players.Add(SerializableGameData.GetSerializableGamePlayer(player));
+                Console.WriteLine($"p: {player.Name} s: {SerializableGameData.GetSerializableGamePlayer(player).Name}");
             }
 
             // Set current turn player

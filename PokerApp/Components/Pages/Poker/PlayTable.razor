@@ -2,20 +2,22 @@
 @rendermode InteractiveServer
 
 @implements IAsyncDisposable
-@* @inject ApplicationDbContext DbContext *@
 @inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject PokerGameService PokerGameService
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
+@using PokerApp.Models
+
 
 <PageTitle>Poker Table</PageTitle>
 
 <HeadContent>
     <link href="css/poker-table.css" rel="stylesheet" />
+    <link href="css/cards.css" rel="stylesheet" />
+    <link href="css/history-feed.css" rel="stylesheet" />
 </HeadContent>
-
 
 @if (pokerTable is null || gameSnapshot == null)
 {
@@ -23,189 +25,186 @@
 }
 else
 {
-    <div class="poker-room">
-        <div class="poker-header">
-            <h3>@pokerTable.Name</h3>
-            <div class="table-info">
-                <span>Blinds: $@pokerTable.SmallBlind / $@pokerTable.BigBlind</span>
-                <span>Table Code: @pokerTable.TableCode</span>
+    <HistoryFeedComponent 
+        IsVisible="@isHistoryVisible"
+        HasNewEvents="@hasNewEvents"
+        Events="@historyEvents" 
+        OnVisibilityToggled="@ToggleHistoryVisibility" 
+    />
+    @*<div class="poker-app-container">*@
+         
+        <div class="poker-room">
+            <div class="poker-header">
+                <h3>@pokerTable.Name</h3>
+                <div class="table-info">
+                    <span>Blinds: $@pokerTable.SmallBlind / $@pokerTable.BigBlind</span>
+                    <span>Table Code: @pokerTable.TableCode</span>
+                    @if (isTableOwner)
+                    {
+                        <button class="btn btn-sm btn-primary" @onclick="ShowTableSettingsModal">
+                            <i class="fas fa-cog"></i> Settings
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="game-controls">
                 @if (isTableOwner)
                 {
-                    <button class="btn btn-sm btn-primary" @onclick="ShowTableSettingsModal">
-                        <i class="fas fa-cog"></i> Settings
-                    </button>
+                    <div class="owner-controls mt-3">
+                        @if (isGamePaused)
+                        {
+                            <button class="btn btn-success" @onclick="ResumeGame">
+                                <i class="fas fa-play"></i> Resume Game
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-warning" @onclick="PauseGame">
+                                <i class="fas fa-pause"></i> Pause Game
+                            </button>
+                        }
+            
+                        <button class="btn btn-info" @onclick="RestartTimer">
+                            <i class="fas fa-redo"></i> Restart Timer
+                        </button>
+
+                        <button class="btn @(isAutoPlayOn ? "btn-warning" : "btn-success")" @onclick="SetAutoPlay">
+                            <i class="fas @(isAutoPlayOn ? "fa-redo" : "fa-pause")"></i> 
+                            @(isAutoPlayOn ? "Turn Off Auto Play" : "Auto Play")
+                        </button>
+                    </div>
+                    @if (gameSnapshot.GameState == GameState.NOT_STARTED && pokerTable.Players.Count(p => p.IsSeated) >= 2)
+                    {
+                            <button class="btn btn-success" @onclick="StartGame">Start Game</button>
+            
+                    }
+                    else if (!isAutoPlayOn)
+                    {
+                        @if (gameSnapshot.GameState != GameState.NOT_STARTED && gameSnapshot.GameState != GameState.END && gameSnapshot.BetsMade)
+                        {
+                            <div class="game-controls">
+                                <button class="btn btn-primary" @onclick="PlayNextStep">Next Step</button>
+                            </div>
+                        }
+                        else if (gameSnapshot.GameState == GameState.END)
+                        {
+                            <div class="new-hand-controls">
+                                <button class="btn btn-primary" @onclick="StartNextGame">Deal Next Hand</button>
+                            </div>
+                        }
+                    }
                 }
             </div>
-        </div>
-
-        <div class="game-controls">
-            @if (isTableOwner && gameSnapshot != null)
-            {
-                <div class="owner-controls mt-3">
-                    @if (isGamePaused)
-                    {
-                        <button class="btn btn-success" @onclick="ResumeGame">
-                            <i class="fas fa-play"></i> Resume Game
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="btn btn-warning" @onclick="PauseGame">
-                            <i class="fas fa-pause"></i> Pause Game
-                        </button>
-                    }
-            
-                    <button class="btn btn-info" @onclick="RestartTimer">
-                        <i class="fas fa-redo"></i> Restart Timer
-                    </button>
-
-                    @*@if (isAutoPlayOn)
-                    {
-                        <button class="btn btn-warning" @onclick="SetAutoPlay">
-                            <i class="fas fa-redo"></i> Turn Off Auto Play
-                        </button>
-                    }
-                    else
-                    {
-                        <button class="btn btn-success" @onclick="SetAutoPlay">
-                            <i class="fas fa-pause"></i> Auto Play
-                        </button>
-                    }*@
-                    <button class="btn @(isAutoPlayOn ? "btn-warning" : "btn-success")" @onclick="SetAutoPlay">
-                        <i class="fas @(isAutoPlayOn ? "fa-redo" : "fa-pause")"></i> 
-                        @(isAutoPlayOn ? "Turn Off Auto Play" : "Auto Play")
-                    </button>
-                </div>
-                @if (gameSnapshot.GameState == GameState.NOT_STARTED && pokerTable.Players.Count(p => p.IsSeated) >= 2)
-                {
-                        <button class="btn btn-success" @onclick="StartGame">Start Game</button>
-            
-                }
-                else if (!isAutoPlayOn)
-                {
-                    @if (gameSnapshot.GameState != GameState.NOT_STARTED && gameSnapshot.GameState != GameState.END && gameSnapshot.BetsMade)
-                    {
-                        <div class="game-controls">
-                            <button class="btn btn-primary" @onclick="PlayNextStep">Next Step</button>
-                        </div>
-                    }
-                    else if (gameSnapshot.GameState == GameState.END)
-                    {
-                        <div class="new-hand-controls">
-                            <button class="btn btn-primary" @onclick="StartNextGame">Deal Next Hand</button>
-                        </div>
-                    }
-                }
-            }
-        </div>
                             
 
-        <div class="poker-table-container">
-            <PokerTableComponent 
-                Snapshot="@gameSnapshot" 
-                CurrentUserId="@userId" 
-                IsOwner="@isTableOwner"
-                OnPositionSelected="@HandlePositionSelected" />
-        </div>
+            <div class="poker-table-container">
+                <PokerTableComponent 
+                    Snapshot="@gameSnapshot" 
+                    CurrentUserId="@userId" 
+                    IsOwner="@isTableOwner"
+                    OnPositionSelected="@HandlePositionSelected" />
+            </div>
 
-        @{
-            bool showBettingControls = isCurrentPlayer && gameSnapshot.GameState != GameState.NOT_STARTED && 
-                                      gameSnapshot.GameState != GameState.END && !gameSnapshot.BetsMade;
-        }
+            @{
+                bool showBettingControls = isCurrentPlayer && gameSnapshot.GameState != GameState.NOT_STARTED && 
+                                            gameSnapshot.GameState != GameState.END && !gameSnapshot.BetsMade;
+            }
 
-        <div class="game-action-area @(showBettingControls ? "with-betting-controls" : "")">
-            <div class="player-cards-container">
-                @if (gameSnapshot.GameState != GameState.NOT_STARTED && currentPlayerIndex >= 0 && !gameSnapshot.Players[currentPlayerIndex].HasFolded)
-                {
-                    <div class="your-cards">
-                        <h5>Your Cards</h5>
-                        <div class="cards-container">
-                            @foreach (var card in gameSnapshot.Players[currentPlayerIndex].Hand)
-                            {
-                                <CardComponent CardModel="@card" Visible="true" />
-                            }
+            <div class="game-action-area @(showBettingControls ? "with-betting-controls" : "")">
+                <div class="player-cards-container">
+                    @if (gameSnapshot.GameState != GameState.NOT_STARTED && currentPlayerIndex >= 0 && !gameSnapshot.Players[currentPlayerIndex].HasFolded)
+                    {
+                        <div class="your-cards">
+                            <h5>Your Cards</h5>
+                            <div class="cards-container">
+                                @foreach (var card in gameSnapshot.Players[currentPlayerIndex].Hand)
+                                {
+                                    <CardComponent CardModel="@card" Visible="true" />
+                                }
+                            </div>
                         </div>
-                    </div>
-                }
-            </div>
+                    }
+                </div>
     
-            <div class="betting-controls-container">
-                @if (showBettingControls)
-                {
-                    <BettingControlsComponent 
-                        CurrentPlayer="@gameSnapshot.TurnPlayer" 
-                        CurrentBet="@gameSnapshot.CurrentBet"
-                        BigBlind="@gameSnapshot.BigBlind"
-                        OnPlayerAction="HandlePlayerAction" />
-                }
-            </div>
+                <div class="betting-controls-container">
+                    @if (showBettingControls)
+                    {
+                        <BettingControlsComponent 
+                            CurrentPlayer="@gameSnapshot.TurnPlayer" 
+                            CurrentBet="@gameSnapshot.CurrentBet"
+                            BigBlind="@gameSnapshot.BigBlind"
+                            OnPlayerAction="HandlePlayerAction" />
+                    }
+                </div>
     
-            <div class="turn-status-container">
-                @if (!gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED && gameSnapshot.GameState != GameState.END)
-                {
-                    <div class="current-turn">
-                        @if (gameSnapshot.TurnPlayer != null)
-                        {
-                            @((string.IsNullOrEmpty(gameSnapshot.TurnPlayer.User?.DisplayName) ? "Player " + gameSnapshot.TurnPlayer.Position : gameSnapshot.TurnPlayer.User?.DisplayName) + "'s turn")
-                        }
-                        <div class="timer">Time remaining: @timeRemaining seconds</div>
-                    </div>
-                }
+                <div class="turn-status-container">
+                    @if (!gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED && gameSnapshot.GameState != GameState.END)
+                    {
+                        <div class="current-turn">
+                            @if (gameSnapshot.TurnPlayer != null)
+                            {
+                                @((string.IsNullOrEmpty(gameSnapshot.TurnPlayer.User?.DisplayName) ? "Player " + gameSnapshot.TurnPlayer.Position : gameSnapshot.TurnPlayer.User?.DisplayName) + "'s turn")
+                            }
+                            <div class="timer">Time remaining: @timeRemaining seconds</div>
+                        </div>
+                    }
+                </div>
             </div>
-        </div>
             
-        <div>
-            @if (gameSnapshot.GameState == GameState.END && gameSnapshot.AllWinners != null && gameSnapshot.AllWinners.Any())
-            {
-                <div class="winners-display">
-                    <h4>Winner(s)</h4>
-                    @foreach (var potAndWinners in gameSnapshot.AllWinners)
-                    {
-                        <div class="winner-group">
-                            <h5>Pot: $@potAndWinners.Key.Amount</h5>
-                            @foreach (var winner in potAndWinners.Value)
-                            {
-                                <div class="winner">
-                                    <div class="winner-name">@(string.IsNullOrEmpty(winner.Key.User?.DisplayName) ? "Player " + winner.Key.Position : winner.Key.User?.DisplayName): @winner.Value.Type</div>
-                                    <div class="winning-cards">
-                                        @foreach (var card in winner.Value.BestCards)
-                                        {
-                                            <div class="card-debug" style="display:none;">@card.Rank of @card.Suit</div>
-                                            <CardComponent CardModel="@card" Visible="true" />
-                                        }
+            <div>
+                @if (gameSnapshot.GameState == GameState.END && gameSnapshot.AllWinners != null && gameSnapshot.AllWinners.Any())
+                {
+                    <div class="winners-display">
+                        <h4>Winner(s)</h4>
+                        @foreach (var potAndWinners in gameSnapshot.AllWinners)
+                        {
+                            <div class="winner-group">
+                                <h5>Pot: $@potAndWinners.Key.Amount</h5>
+                                @foreach (var winner in potAndWinners.Value)
+                                {
+                                    <div class="winner">
+                                        <div class="winner-name">@(string.IsNullOrEmpty(winner.Key.User?.DisplayName) ? "Player " + winner.Key.Position : winner.Key.User?.DisplayName): @winner.Value.Type</div>
+                                        <div class="winning-cards">
+                                            @foreach (var card in winner.Value.BestCards)
+                                            {
+                                                <div class="card-debug" style="display:none;">@card.Rank of @card.Suit</div>
+                                                <CardComponent CardModel="@card" Visible="true" />
+                                            }
+                                        </div>
                                     </div>
-                                </div>
-                            }
-                        </div>
-                    }
-                    @if (!isTableOwner)
-                    {
-                        <div class="new-hand-controls">
-                            <div style="color:white">Waiting for table owner to deal the next hand...</div>
-                        </div>
-                    }
-                </div>
-            }
-        </div>
+                                }
+                            </div>
+                        }
+                        @if (!isTableOwner)
+                        {
+                            <div class="new-hand-controls">
+                                <div style="color:white">Waiting for table owner to deal the next hand...</div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
 
-        <div class="player-controls">
-            @if (currentPlayerIndex >= 0)
-            {
-                <div class="player-actions">
-                    @if (gameSnapshot.Players[currentPlayerIndex].IsInGame)
-                    {
-                        <button class="btn btn-warning" @onclick="StandUp">Stand Up</button>
-                    }
-                    else
-                    {
-                        <button class="btn btn-success" @onclick="SitDown">Sit Down</button>
-                    }
-                    <button class="btn btn-info" @onclick="ShowAddChipsModal">Add Chips</button>
-                    <button class="btn btn-danger" @onclick="LeaveTable">Leave Table</button>
-                </div>
-            }
+            <div class="player-controls">
+                @if (currentPlayerIndex >= 0)
+                {
+                    <div class="player-actions">
+                        @if (gameSnapshot.Players[currentPlayerIndex].IsInGame)
+                        {
+                            <button class="btn btn-warning" @onclick="StandUp">Stand Up</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-success" @onclick="SitDown">Sit Down</button>
+                        }
+                        <button class="btn btn-info" @onclick="ShowAddChipsModal">Add Chips</button>
+                        <button class="btn btn-danger" @onclick="LeaveTable">Leave Table</button>
+                    </div>
+                }
+            </div>
         </div>
-    </div>
+    @*</div>*@
 
     <!-- Table Settings Modal -->
     @if (showTableSettings)
@@ -309,6 +308,101 @@ else
     }
 }
 
+<script>
+    window.setupHistoryFeedLayout = function() {
+        window.addEventListener('resize', function() {
+            if (document.querySelector('.history-feed-container:not(.hidden)')) {
+                adjustLayoutForHistoryFeed();
+            }
+        });
+        
+        // Initial check
+        if (document.querySelector('.history-feed-container:not(.hidden)')) {
+            adjustLayoutForHistoryFeed();
+        }
+    };
+    
+    window.adjustLayoutForHistoryFeed = function() {
+        const historyFeed = document.querySelector('.history-feed-container');
+        const pokerRoom = document.querySelector('.poker-room');
+        const screenWidth = window.innerWidth;
+        
+        if (!historyFeed || !pokerRoom) return;
+        
+        const historyWidth = parseInt(getComputedStyle(document.documentElement)
+            .getPropertyValue('--history-feed-width'));
+            
+        // Mobile view - bottom positioned feed
+        if (screenWidth <= 640.98) {
+            pokerRoom.classList.add('need-space-for-history');
+            return;
+        }
+        
+        // Check if there's enough space for the history feed without moving content
+        const pokerRoomRect = pokerRoom.getBoundingClientRect();
+        const pokerRoomLeftEdge = pokerRoomRect.left;
+        const pokerRoomWidth = pokerRoomRect.width;
+        
+        // If the poker room is already wide or positioned far enough to the right
+        // so that adding the history feed won't cause overflow, don't add the margin
+        const windowWidth = window.innerWidth;
+        const availableWidth = windowWidth - historyWidth;
+        
+        @*console.log({
+            historyWidth,
+            pokerRoomWidth,
+            pokerRoomLeftEdge,
+            windowWidth,
+            availableWidth
+        });*@
+        
+        // If the poker room can fit within available space, or is already offset
+        // enough to accommodate the history feed, don't add extra margin
+        if (pokerRoomWidth <= availableWidth || pokerRoomLeftEdge >= historyWidth) {
+            pokerRoom.classList.remove('need-space-for-history');
+            console.log('No need to adjust layout - enough space');
+        } else {
+            // Otherwise, we need to shift the content
+            pokerRoom.classList.add('need-space-for-history');
+            console.log('Adjusting layout - not enough space');
+        }
+    };
+    
+    window.resetLayoutForHistoryFeed = function() {
+        const pokerRoom = document.querySelector('.poker-room');
+        if (pokerRoom) {
+            pokerRoom.classList.remove('need-space-for-history');
+        }
+    };
+    
+    // Make sure this runs after DOM content is loaded
+    document.addEventListener('DOMContentLoaded', setupHistoryFeedLayout);
+</script>
+
+<script>
+    function detectTopRowHeight() {
+        const topRow = document.querySelector('.top-row');
+        
+        if (topRow) {
+            // Get exact top row height
+            const topRowRect = topRow.getBoundingClientRect();
+            const exactTopRowHeight = topRowRect.height;
+            
+            // Set CSS variable with the exact height
+            document.documentElement.style.setProperty('--top-row-height', exactTopRowHeight + 'px');
+            console.log('Top row height set to:', exactTopRowHeight + 'px');
+        }
+    }
+
+    // Run detection on page load
+    window.addEventListener('DOMContentLoaded', detectTopRowHeight);
+
+    // Also run on window resize to handle responsive layouts
+    window.addEventListener('resize', detectTopRowHeight);
+
+    // Expose function to be called from Blazor
+    window.detectTopRowHeight = detectTopRowHeight;
+</script>
 
 @code {
     [Parameter]
@@ -323,6 +417,10 @@ else
     private bool isGamePaused = false;
     private bool isAutoPlayOn = false;
     private HubConnection? hubConnection;
+    private List<GameHistoryEvent> historyEvents = new();
+    private bool isHistoryVisible = false;
+    private bool hasNewEvents = false;
+    private bool _isFirstRender = true;
     
     // Modals
     private bool showTableSettings = false;
@@ -379,27 +477,42 @@ else
             }
             else
             {
-                NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                NavigationManager.NavigateTo("/Account/Login", true);
                 return;
             }
         }
         else
         {
-            NavigationManager.NavigateTo("/Identity/Account/Login", true);
+            NavigationManager.NavigateTo("/Account/Login", true);
             return;
         }
-        
-        // Load table information
+
         await LoadTableData();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
-{
-    if (firstRender)
-    {        
-        await SetupSignalRConnection();
+    {
+        await JSRuntime.InvokeVoidAsync("window.addEventListener", "resize", DotNetObjectReference.Create(this), "OnWindowResize");
+        if (firstRender)
+        {        
+            await SetupSignalRConnection();
+            var storedVisibilitySetting = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "pokerHistoryVisible");
+            isHistoryVisible = storedVisibilitySetting == "true";
+            await JSRuntime.InvokeVoidAsync("detectTopRowHeight");
+        
+            // Initialize our history feed layout system
+            await JSRuntime.InvokeVoidAsync("setupHistoryFeedLayout");
+        
+            if (isHistoryVisible)
+            {
+                // If history is visible on first load, make sure layout is adjusted
+                await JSRuntime.InvokeVoidAsync("adjustLayoutForHistoryFeed");
+                await InvokeAsync(StateHasChanged);
+            }
+            _isFirstRender = false;
+        }
+        await base.OnAfterRenderAsync(firstRender);
     }
-}
     
     private async Task LoadTableData()
     {
@@ -456,23 +569,13 @@ else
             PokerGameService.Log("Debug", "[UI] *** Reordering poker table players ***");
             foreach (GamePlayer player in pokerTable.Players)
             {
-                PokerGameService.Log("Debug", "[UI] " + player.Id + " " + player.User.DisplayName + " " + player.Position);
+                PokerGameService.Log("Debug", "[UI] " + player.Id + " " + player.Name + " (" + player.User.DisplayName + ") " + player.Position);
             }
             pokerTable.Players = [.. pokerTable.Players.OrderBy(p => p.Position)];
             PokerGameService.Log("Debug", "[UI] *** done ***");
             foreach (GamePlayer player in pokerTable.Players)
             {
-                PokerGameService.Log("Debug", "[UI] " + player.Id + " " + player.User.DisplayName + " " + player.Position);
-            }
-
-            foreach (var player in pokerTable.Players)
-            {
-                // Explicitly set the Name property from the User's DisplayName
-                if (string.IsNullOrEmpty(player.Name) && player.User != null)
-                {
-                    player.Name = string.IsNullOrEmpty(player.User.DisplayName) ? "Player " + player.Position : player.User.DisplayName;
-                    PokerGameService.Log("Debug", $"[UI]  Set player name to: {player.Name}");
-                }
+                PokerGameService.Log("Debug", "[UI] " + player.Id + " " + player.Name + " (" + player.User.DisplayName + ") " + player.Position);
             }
 
             if (pokerTable.TimeRemaining <= 0)
@@ -483,6 +586,8 @@ else
             {
                 PokerGameService.Log("Debug", "[UI] Time remaining ! " + pokerTable.TimeRemaining);
             }
+
+            historyEvents = PokerGameService.GetTableHistory(pokerTable.Id);
 
             gameSnapshot = pokerTable.GetGameSnapshot();
             PokerGameService.Log("Debug", $"[UI]  Loaded game snapshot: GameState={gameSnapshot.GameState}, Players={gameSnapshot.Players.Count}, TablePositions={string.Join(",", gameSnapshot.TablePositions)}, timeRemaining={gameSnapshot.TimeRemaining}");
@@ -499,13 +604,13 @@ else
                     !gameSnapshot.BetsMade)
                 {
                     isGamePaused = gameSnapshot.IsGamePaused;
-                    PokerGameService.RefreshTimer(pokerTable.Id, pokerTable.TimeRemaining);
+                    await PokerGameService.RefreshTimer(pokerTable.Id, pokerTable.TimeRemaining);
                 }
             }
         }
         catch (Exception ex)
         {
-            PokerGameService.Log("Error", "[UI] Error loading table data: {ex.Message}");
+            PokerGameService.Log("Error", $"[UI] Error loading table data: {ex.Message}");
             NavigationManager.NavigateTo("/poker/tables");
         }
     }
@@ -522,6 +627,8 @@ else
             hubConnection.On<SerializableGameSnapshot>("GameUpdate", OnGameUpdate);
             hubConnection.On<string, string, string, decimal>("PlayerAction", OnPlayerAction);
             hubConnection.On<int, bool>("TimerUpdate", OnTimerUpdate);
+            hubConnection.On<GameHistoryEvent>("GameHistoryEvent", OnGameHistoryEvent);
+            hubConnection.On<GameHistoryEvent>("PlayerCards", OnPlayerCards);
 
             hubConnection.Closed += async (error) => 
             {
@@ -564,7 +671,7 @@ else
                     {
                         PokerGameService.Log("Debug", "[UI] Major state change detected - updating from snapshot - currentPlayer: " + currentPlayerIndex);
                         UpdateFromSnapshot(serSnapshot);
-                        if (pokerTable.Game == null && gameSnapshot.GameState != GameState.NOT_STARTED)
+                        if (gameSnapshot != null && pokerTable != null && pokerTable.Game == null && gameSnapshot.GameState != GameState.NOT_STARTED)
                         {
                             PokerGameService.Log("Debug", "[UI] After update from snapshot, game is null but game state has started, trying to loadTableData instead of ui refresh");
                             await LoadTableData();
@@ -579,24 +686,24 @@ else
                         await UpdateLocalGameState(serSnapshot.ToGameStateUpdate());
                     }
                     
-                    PokerGameService.Log("Debug", "[UI] gamesnapshot: state - " + gameSnapshot.GameState + ", turnPlayer - " + gameSnapshot.TurnPlayer?.User.DisplayName + ", cards - " + gameSnapshot.CommunityCards.Count +
-                        ", players - " + gameSnapshot.Players.Count + ", pot - " + gameSnapshot.Pot.Amount + ", winners - " + gameSnapshot.AllWinners.Count);
-                   PokerGameService.Log("Debug", "[UI] pokerTable: table - " + pokerTable + ", game - " + pokerTable.Game + ", players - " + pokerTable.Players.Count + ", owner - " + pokerTable.Owner);
+                    PokerGameService.Log("Debug", "[UI] gamesnapshot: state - " + gameSnapshot?.GameState + ", turnPlayer - " + gameSnapshot?.TurnPlayer?.User?.DisplayName + ", cards - " + gameSnapshot?.CommunityCards.Count +
+                        ", players - " + gameSnapshot?.Players.Count + ", pot - " + gameSnapshot?.Pot.Amount + ", winners - " + gameSnapshot?.AllWinners.Count);
+                    PokerGameService.Log("Debug", "[UI] pokerTable: table - " + pokerTable + ", game - " + pokerTable?.Game + ", players - " + pokerTable?.Players.Count + ", owner - " + pokerTable?.Owner);
 
                     await InvokeAsync(StateHasChanged);
 
-                    if (isAutoPlayOn && gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED)
+                    if (isAutoPlayOn && gameSnapshot != null && gameSnapshot.BetsMade && gameSnapshot.GameState != GameState.NOT_STARTED)
                     {
                         if (gameSnapshot.GameState == GameState.END)
                         {
                             await Task.Delay(5000);
-                            StartNextGame();
+                            _ = StartNextGame();
                             return;
                         }
 
                         int delay = gameSnapshot.GameState == GameState.RIVER ? 500 : 1000;
                         await Task.Delay(delay);
-                        PlayNextStep();
+                        _ = PlayNextStep();
                         return;
                     }
                 }
@@ -670,7 +777,7 @@ else
         
         foreach (var serPlayer in serSnapshot.Players)
         {
-            GamePlayer updatedPlayer = SerializableGameData.GetDeserializableGamePlayer(serPlayer);
+            GamePlayer updatedPlayer = SerializableGameData.GetDeserializableGamePlayer(serPlayer) ?? new GamePlayer();
             var existingPlayer = gameSnapshot.Players.FirstOrDefault(p => p.Id == serPlayer.Id);
 
             if (existingPlayer != null)
@@ -678,6 +785,7 @@ else
                 updatedPlayer.PokerTableId = existingPlayer.PokerTableId;
                 updatedPlayer.JoinedAt = existingPlayer.JoinedAt;
                 updatedPlayer.User = existingPlayer.User;
+                updatedPlayer.Name = existingPlayer.Name;
             }
             else
             {
@@ -717,7 +825,7 @@ else
         
         if (pokerTable.Game != null) 
         {
-            if (pokerTable != null && gameSnapshot.TurnPlayer != null)
+            if (gameSnapshot.TurnPlayer != null)
             {
                 PokerGameService.Log("Debug", "[UI] Setting turn player position to: " + gameSnapshot.Players.IndexOf(gameSnapshot.TurnPlayer) + " using " + gameSnapshot.TurnPlayer.User.DisplayName);
                 pokerTable.Game.CurrentTurnPlayerPosition = gameSnapshot.Players.IndexOf(gameSnapshot.TurnPlayer);
@@ -778,6 +886,7 @@ else
                 existingPlayer.PokerPosition = updatePlayer.PokerPosition;
                 existingPlayer.IsDealer = updatePlayer.IsDealer;
                 existingPlayer.Hand = updatePlayer.Hand;
+                existingPlayer.Name = updatePlayer.Name;
             }
         }
 
@@ -817,19 +926,19 @@ else
     
     private async Task PauseGame()
     {
-        await PokerGameService.PauseTimer(TableId);
+        await PokerGameService.PauseTimer(TableId ?? "");
     }
 
     private async Task ResumeGame()
     {
-        await PokerGameService.ResumeTimer(TableId);
+        await PokerGameService.ResumeTimer(TableId ?? "");
     }
 
     private async Task RestartTimer()
     {
         int seconds = pokerTable?.TimerSeconds ?? 30;
         PokerGameService.Log("Debug", "[UI] calling restart timer with " + seconds);
-        await PokerGameService.ResetTimer(TableId, seconds);
+        await PokerGameService.ResetTimer(TableId ?? "", seconds);
     }
 
     private async Task SetAutoPlay()
@@ -842,12 +951,12 @@ else
             if (gameSnapshot.GameState == GameState.END)
             {
                 await Task.Delay(delay);
-                StartNextGame();
+                _ = StartNextGame();
                 return;
             }
 
             await Task.Delay(delay);
-            PlayNextStep();
+            _ = PlayNextStep();
             return;
         }
     }
@@ -932,7 +1041,7 @@ else
     {
         try
         {
-            gameSnapshot = await PokerGameService.StartGameAsync(TableId, true);
+            gameSnapshot = await PokerGameService.StartGameAsync(TableId ?? "", true);
             CheckIfUsersTurn();
             await InvokeAsync(StateHasChanged);
         }
@@ -946,7 +1055,7 @@ else
     {
         try
         {
-            gameSnapshot = await PokerGameService.PlayNextStep(TableId);
+            gameSnapshot = await PokerGameService.PlayNextStep(TableId ?? "");
             
             if (gameSnapshot.GameState != GameState.END && !gameSnapshot.BetsMade)
             {
@@ -959,7 +1068,7 @@ else
                 if (isAutoPlayOn)
                 {
                     await Task.Delay(5000);
-                    StartNextGame();
+                    _ = StartNextGame();
                     return;
                 }
             }
@@ -992,8 +1101,7 @@ else
                     PokerGameService.Log("Debug", $"[UI] Still null after reload");
                     return;
                 }
-                PokerGameService.Log("Debug", $"[UI] Maybe fine after reload? but returning anyways");
-                return;
+                PokerGameService.Log("Debug", $"[UI] Continuing after reload");
             }
 
             await RestartTimer();
@@ -1018,7 +1126,7 @@ else
                     delay = 500;
                 }
                 await Task.Delay(delay);
-                PlayNextStep();
+                _ = PlayNextStep();
             }
         }
         catch (Exception ex)
@@ -1032,7 +1140,7 @@ else
     {
         try
         {
-            gameSnapshot = await PokerGameService.StartGameAsync(TableId);
+            gameSnapshot = await PokerGameService.StartGameAsync(TableId ?? "");
             CheckIfUsersTurn();
             await InvokeAsync(StateHasChanged);
         }
@@ -1151,7 +1259,7 @@ else
             
         try
         {
-            await PokerGameService.AddChipsAsync(TableId, userId, addChipsModel.Amount);
+            await PokerGameService.AddChipsAsync(TableId ?? "", userId, addChipsModel.Amount);
             HideAddChipsModal();
             await LoadTableData();
         }
@@ -1168,7 +1276,7 @@ else
             
         try
         {
-            await PokerGameService.StandUpAsync(TableId, userId);
+            await PokerGameService.StandUpAsync(TableId ?? "", userId);
             await LoadTableData();
         }
         catch (Exception ex)
@@ -1184,7 +1292,7 @@ else
             
         try
         {
-            await PokerGameService.SitDownAsync(TableId, userId);
+            await PokerGameService.SitDownAsync(TableId ?? "", userId);
             await LoadTableData();
         }
         catch (Exception ex)
@@ -1200,7 +1308,8 @@ else
             
         try
         {
-            await PokerGameService.LeaveTableAsync(TableId, userId);
+            await PokerGameService.LeaveTableAsync(TableId ?? "", userId);
+            await DisposeAsync();
             NavigationManager.NavigateTo("/poker/tables");
         }
         catch (Exception ex)
@@ -1225,5 +1334,55 @@ else
                 // Ignore errors during disposal
             }
         }
+    }
+
+    private void OnGameHistoryEvent(GameHistoryEvent gameEvent)
+    {
+        InvokeAsync(() => {
+            historyEvents.Add(gameEvent);
+            if (!isHistoryVisible)
+            {
+                hasNewEvents = true;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnPlayerCards(GameHistoryEvent gameEvent)
+    {
+        InvokeAsync(() => {
+            historyEvents.Add(gameEvent);
+            if (!isHistoryVisible)
+            {
+                hasNewEvents = true;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task ToggleHistoryVisibility(bool isVisible)
+    {
+        isHistoryVisible = isVisible;
+        hasNewEvents = false;
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "pokerHistoryVisible", isVisible.ToString().ToLower());
+    
+        // Instead of adding a class directly, call our JS functions to determine if we need space
+        if (isVisible)
+        {
+            await JSRuntime.InvokeVoidAsync("adjustLayoutForHistoryFeed");
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("resetLayoutForHistoryFeed");
+        }
+    }
+
+    [JSInvokable]
+    public void OnWindowResize()
+    {
+        InvokeAsync(async () => 
+        {
+            await JSRuntime.InvokeVoidAsync("detectTopRowHeight");
+        });
     }
 }

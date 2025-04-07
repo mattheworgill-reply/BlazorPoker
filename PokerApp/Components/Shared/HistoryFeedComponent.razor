@@ -1,0 +1,81 @@
+@namespace PokerApp.Components
+@inject IJSRuntime JSRuntime
+
+<div class="history-feed-container @(IsVisible ? "" : "hidden")" id="history-feed-container">
+    <div class="history-feed">
+        <div class="history-feed-header">
+            <h4>Game History</h4>
+        </div>
+        <div class="history-feed-content">
+            @if (Events.Count == 0)
+            {
+                <div class="no-events">No game events yet</div>
+            }
+            else
+            {
+                @foreach (var gameEvent in Events.OrderByDescending(e => e.Timestamp))
+                {
+                    <div class="history-event @gameEvent.Type.ToString().ToLower()">
+                        <div class="event-time">@gameEvent.Timestamp.ToString("HH:mm:ss")</div>
+                        <div class="event-message">@((MarkupString)gameEvent.Message)</div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+    <button class="toggle-button" @onclick="ToggleVisibility">
+        @if (!IsVisible && HasNewEvents)
+        {
+            <span class="new-events-indicator"></span>
+        }
+        <i class="fas fa-@(IsVisible ? "chevron-left" : "history")"></i>
+    </button>
+</div>
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; } = false;
+    
+    [Parameter]
+    public bool HasNewEvents { get; set; } = false;
+
+    [Parameter]
+    public List<GameHistoryEvent> Events { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<bool> OnVisibilityToggled { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("setupHistoryFeedLayout");
+        }
+        
+        await UpdateLayoutSpace();
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task ToggleVisibility()
+    {
+        IsVisible = !IsVisible;
+        await OnVisibilityToggled.InvokeAsync(IsVisible);
+        StateHasChanged();
+        
+        // Update layout after changing visibility
+        await UpdateLayoutSpace();
+    }
+    
+    private async Task UpdateLayoutSpace()
+    {
+        // Call JavaScript to adjust layout when visibility changes
+        if (IsVisible)
+        {
+            await JSRuntime.InvokeVoidAsync("adjustLayoutForHistoryFeed");
+        }
+        else 
+        {
+            await JSRuntime.InvokeVoidAsync("resetLayoutForHistoryFeed");
+        }
+    }
+}

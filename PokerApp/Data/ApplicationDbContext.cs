@@ -25,12 +25,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
         // Configure entity relationships
 
-        // PokerTable to Owner (ApplicationUser)
         builder.Entity<PokerTable>()
             .HasOne(t => t.Owner)
             .WithMany(u => u.OwnedTables)
             .HasForeignKey(t => t.OwnerId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<PokerTable>()
+            .Property(p => p.BigBlind)
+            .HasPrecision(18, 2);
+
+        builder.Entity<PokerTable>()
+            .Property(p => p.SmallBlind)
+            .HasPrecision(18, 2);
 
         builder.Entity<PokerGame>()
             .HasOne(g => g.GameTable)
@@ -42,6 +49,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<PokerGame>()
             .Property(g => g.State)
             .HasConversion<int>();
+
+        builder.Entity<PokerGame>()
+            .Property(g => g.CurrentBetAmount)
+            .HasPrecision(18, 2);
+
+        builder.Entity<PokerGame>()
+            .Property(g => g.CurrentRoundPotAmount)
+            .HasPrecision(18, 2);
 
         // GamePlayer relationships
         builder.Entity<GamePlayer>()
@@ -60,6 +75,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .Property(p => p.PokerPosition)
             .HasConversion<int>();
 
+        builder.Entity<GamePlayer>()
+            .Property(p => p.Stack)
+            .HasPrecision(18, 2);
+
+        builder.Entity<GamePlayer>()
+            .Property(p => p.CurrentBet)
+            .HasPrecision(18, 2);
+
         // GameHistory relationships
         builder.Entity<GameHistory>()
             .HasOne(h => h.PokerTable)
@@ -74,6 +97,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<GameHistory>()
+            .Property(h => h.PotAmount)
+            .HasPrecision(18, 2);
+
         // GameHistoryPlayer relationships
         builder.Entity<GameHistoryPlayer>()
             .HasOne(p => p.GameHistory)
@@ -87,11 +114,35 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasForeignKey(p => p.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<GameHistoryPlayer>()
+            .Property(p => p.StartingStack)
+            .HasPrecision(18, 2);
+
+        builder.Entity<GameHistoryPlayer>()
+            .Property(p => p.EndingStack)
+            .HasPrecision(18, 2);
+
         // UserStats relationship
         builder.Entity<UserStats>()
             .HasOne(s => s.User)
             .WithOne(u => u.Stats)
             .HasForeignKey<UserStats>(s => s.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Entity<UserStats>()
+            .Property(s => s.BiggestPot)
+            .HasPrecision(18, 2);
+
+        builder.Entity<UserStats>()
+            .Property(s => s.TotalWinnings)
+            .HasPrecision(18, 2);
+
+        builder.Entity<UserStats>()
+            .Property(s => s.TotalLosses)
+            .HasPrecision(18, 2);
+
+        builder.Entity<ApplicationUser>()
+            .Property(s => s.Balance)
+            .HasPrecision(18, 2);
     }
 }

@@ -22,7 +22,7 @@ public class PokerTable
     public string TableCode { get; set; } = string.Empty;
 
     // Game State fields
-    public List<int> playerLeaves { get; set; } = [];
+    public List<string> playerLeaves { get; set; } = [];
     public string? TablePositionsJson { get; set; }
 
     // Navigation properties

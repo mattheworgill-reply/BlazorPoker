@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.SignalR;
 using PokerApp.Models;
 using PokerApp.Models.Enums;
@@ -9,11 +10,48 @@ public class PokerHub : Hub
 {
     private readonly GameTimerService _timerService;
     private readonly ILogger<PokerHub> _logger;
+    private static readonly Dictionary<string, string> _userConnections = new();
 
     public PokerHub(GameTimerService timerService, ILogger<PokerHub> logger)
     {
         _timerService = timerService;
         _logger = logger;
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        var httpContext = Context.GetHttpContext();
+        var userId = httpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _userConnections[userId] = Context.ConnectionId;
+        }
+
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        var httpContext = Context.GetHttpContext();
+        var userId = httpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (!string.IsNullOrEmpty(userId) && _userConnections.ContainsKey(userId))
+        {
+            _userConnections.Remove(userId);
+        }
+
+        await base.OnDisconnectedAsync(exception);
+    }
+
+    public static string? GetConnectionIdByUserId(string userId)
+    {
+        if (_userConnections.TryGetValue(userId, out var connectionId))
+        {
+            return connectionId;
+        }
+
+        return null;
     }
 
     public async Task JoinTableGroup(string tableId)
@@ -45,5 +83,15 @@ public class PokerHub : Hub
     public async Task SendChatMessage(string tableId, string userName, string message)
     {
         await Clients.Group($"table_{tableId}").SendAsync("ReceiveChatMessage", userName, message);
+    }
+
+    public async Task BroadcastGameHistoryEvent(string tableId, GameHistoryEvent gameEvent)
+    {
+        await Clients.Group($"table_{tableId}").SendAsync("GameHistoryEvent", gameEvent);
+    }
+
+    public async Task SendPlayerCards(string connectionId, GameHistoryEvent gameEvent)
+    {
+        await Clients.Client(connectionId).SendAsync("PlayerCards", gameEvent);
     }
 }

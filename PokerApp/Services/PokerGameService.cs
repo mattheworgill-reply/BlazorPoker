@@ -6,6 +6,7 @@ using PokerApp.Models;
 using PokerApp.Models.Enums;
 using Microsoft.AspNetCore.SignalR;
 using PokerApp.Hubs;
+using Microsoft.IdentityModel.Tokens;
 
 namespace PokerApp.Services;
 
@@ -15,6 +16,8 @@ public class PokerGameService
     private readonly ILogger<PokerGameService> _logger;
     private readonly IHubContext<PokerHub> _hubContext;
     private readonly GameTimerService _timerService;
+    private readonly Dictionary<string, List<GameHistoryEvent>> _tableHistories = new();
+    private readonly Dictionary<string, int> _tableGameCounts = new();
 
     public PokerGameService(IDbContextFactory<ApplicationDbContext> contextFactory, ILogger<PokerGameService> logger,
         IHubContext<PokerHub> hubContext, GameTimerService timerService)
@@ -29,37 +32,50 @@ public class PokerGameService
     {
         _logger.LogDebug("[CreateTableAsync] tableName: " + tableName);
         await using var context = await _contextFactory.CreateDbContextAsync();
-        var owner = await context.Users.FindAsync(ownerId)
+        await using var transaction = await context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var owner = await context.Users.FindAsync(ownerId)
             ?? throw new InvalidOperationException("User not found");
 
-        // Generate a unique 6-digit table code
-        var random = new Random();
-        string tableCode;
-        do
+            // Generate a unique 6-digit table code
+            var random = new Random();
+            string tableCode;
+            do
+            {
+                tableCode = random.Next(100000, 999999).ToString();
+            } while (await context.PokerTables.AnyAsync(t => t.TableCode == tableCode));
+
+            var table = new PokerTable
+            {
+                Name = tableName,
+                OwnerId = ownerId,
+                Owner = owner,
+                TimerSeconds = timerSeconds,
+                TimeRemaining = timerSeconds,
+                BigBlind = bigBlind,
+                SmallBlind = bigBlind / 2,
+                TableCode = tableCode,
+                TablePositions = [.. Enumerable.Repeat(-1, 10)],
+                playerLeaves = []
+            };
+
+            context.PokerTables.Add(table);
+            await context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.LogInformation("Created Table: " + tableName);
+
+            return table;
+        }
+        catch (Exception ex)
         {
-            tableCode = random.Next(100000, 999999).ToString();
-        } while (await context.PokerTables.AnyAsync(t => t.TableCode == tableCode));
-
-        var table = new PokerTable
-        {
-            Name = tableName,
-            OwnerId = ownerId,
-            Owner = owner,
-            TimerSeconds = timerSeconds,
-            TimeRemaining = timerSeconds,
-            BigBlind = bigBlind,
-            SmallBlind = bigBlind / 2,
-            TableCode = tableCode,
-            TablePositions = [.. Enumerable.Repeat(-1, 10)],
-            playerLeaves = []
-        };
-
-        context.PokerTables.Add(table);
-        await context.SaveChangesAsync();
-
-        _logger.LogInformation("Created Table: " + tableName);
-
-        return table;
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Error creating poker table: {TableName}", tableName);
+            throw;
+        }
+        
     }
 
     public async Task<GameSnapshot> GetGameStateAsync(string tableId)
@@ -75,7 +91,7 @@ public class PokerGameService
 
     public async Task<PokerTable> JoinTableAsync(string userId, string tableCode, int position, decimal stack)
     {
-        _logger.LogDebug($"[JoinTableAsynce] Player {userId} joining table {tableCode} at position {position}");
+        _logger.LogDebug($"[JoinTableAsync] Player {userId} joining table {tableCode} at position {position}");
 
         await using var context = await _contextFactory.CreateDbContextAsync();
         await using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
@@ -132,13 +148,26 @@ public class PokerGameService
 
             await context.SaveChangesAsync();
             table = await GetCompleteTable(context, table.Id, true);
+            if (table == null) throw new InvalidOperationException("No table");
 
-            if (table != null)
+            await UpdateTablePositionsDirectly(context, table.Id, [.. table.Players]);
+            await context.SaveChangesAsync();
+            if (existingPlayer != null && table.playerLeaves.Contains(existingPlayer.UserId))
             {
-                await UpdateTablePositionsDirectly(context, table.Id, [.. table.Players]);
-                await context.SaveChangesAsync();
+                table.playerLeaves.Remove(existingPlayer.UserId);
+                _logger.LogDebug($"[JoinTableAsync] Player {existingPlayer.Name} rejoined before removal, removing from playerLeaves list");
             }
 
+            foreach (var player in table.Players)
+            {
+                if (string.IsNullOrEmpty(player.Name) && player.User != null)
+                {
+                    player.Name = string.IsNullOrEmpty(player.User.DisplayName) ? "Player " + player.Position : player.User.DisplayName;
+                    _logger.LogDebug($"[JoinTableAsync] Set player name to: {player.Name}");
+                }
+            }
+
+            await context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             var snapshot = await GetTableSnapshot(context, table.Id);
@@ -192,15 +221,6 @@ public class PokerGameService
         if (table == null)
             return new GameSnapshot(null) { TableId = tableId };
 
-        foreach (var player in table.Players)
-        {
-            if (string.IsNullOrEmpty(player.Name) && player.User != null)
-            {
-                player.Name = string.IsNullOrEmpty(player.User.DisplayName) ? "Player " + player.Position : player.User.DisplayName;
-                _logger.LogDebug($"[GetTableSnapshot] Set player name to: {player.Name}");
-            }
-        }
-
         var snapshot = table.GetGameSnapshot();
 
         if (snapshot.Pot == null)
@@ -251,16 +271,71 @@ public class PokerGameService
         return new PokerTable();
     }
 
-    public async Task<GameSnapshot> StartGameAsync(string tableId, bool isNewGame = false)
+    public async Task<bool> ToggleTableActive(string tableId)
     {
-        _logger.LogDebug($"Starting game for table {tableId}");
+        _logger.LogDebug($"[ToggleTableActive] Toggling table {tableId}");
 
         await using var context = await _contextFactory.CreateDbContextAsync();
         await using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
 
         try
         {
-            PokerTable? table = await context.PokerTables
+            var table = await context.PokerTables.FindAsync(tableId);
+
+            if (table != null)
+            {
+                table.IsActive = !table.IsActive;
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error toggling table: {ex}");
+        }
+
+        return false;
+    }
+
+    public async Task<bool> DeleteTableAsync(string tableId)
+    {
+        _logger.LogDebug($"[DeleteTableAsync] Deleting table {tableId}");
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        await using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+
+        try
+        {
+            var table = await context.PokerTables.FindAsync(tableId);
+
+            if (table != null)
+            {
+                table.IsActive = false;
+                context.PokerTables.Remove(table);
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error deleting table: {ex}");
+        }
+
+        return false;
+    }
+
+    public async Task<GameSnapshot> StartGameAsync(string tableId, bool isNewGame = false)
+    {
+        _logger.LogInformation($"Starting game for table {tableId}");
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        await using var transaction = await context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
+
+        try
+        {
+            PokerTable table = await context.PokerTables
                 .Include(t => t.Game)
                 .FirstOrDefaultAsync(t => t.Id == tableId && t.IsActive)
                 ?? throw new InvalidOperationException("Table not found or inactive");
@@ -292,7 +367,19 @@ public class PokerGameService
             {
                 if (table.playerLeaves.Count > 0)
                 {
-                    // Remove players
+                    foreach (string id in table.playerLeaves)
+                    {
+                        GamePlayer? player = players.FirstOrDefault(p => p.UserId == id);
+                        if (player == null) continue;
+                        _logger.LogDebug($"[StartGameAsync] Player {player.Name} is being removed");
+                        bool removeResult = players.Remove(player);
+                        context.GamePlayers.Remove(player);
+                    }
+
+                    table.playerLeaves = [];
+                    table.Players = [.. players.OrderBy(p => p.Position)];
+                    await UpdateTablePositionsDirectly(context, tableId, table.Players.ToList());
+                    await context.SaveChangesAsync();
                 }
 
                 foreach (var player in table.Players)
@@ -308,11 +395,26 @@ public class PokerGameService
                 table.Game.MoveDealerButton();
             }
 
+            //if (isNewGame || !_tableGameCounts.ContainsKey(tableId))
+            //{
+            //    _tableGameCounts[tableId] = 1;
+            //}
+            //else
+            //{
+            //    _tableGameCounts[tableId]++;
+            //}
+
+            //int gameNumber = _tableGameCounts[tableId];
+
+            //await AddGameHistoryEvent(tableId, GameHistoryEvent.GameStart(gameNumber, seatedPlayerCount));
+            await GameHistoryExtension.TrackGameStart(_hubContext, tableId, table);
+
             var activePlayers = table.Players.Where(p => p.IsSeated && p.IsInGame && p.Stack > 0).ToList();
-            DealCardsToPlayers(table.Game.GameDeck, activePlayers);
+            DealCardsToPlayers(table.Game.GameDeck, activePlayers, table.Id);
 
             table.Game.SetBlinds();
             table.Game.BetBlinds();
+            // GameHistoryEvent for blinds??
             table.Game.GameDeck = table.Game.GameDeck;
 
             await context.SaveChangesAsync();
@@ -351,7 +453,7 @@ public class PokerGameService
         return snapshot;
     }
 
-    private void DealCardsToPlayers(Deck deck, List<GamePlayer> players)
+    private void DealCardsToPlayers(Deck deck, List<GamePlayer> players, string tableId)
     {
         _logger.LogDebug("[Deck] dealing cards to players " + deck.Cards.Count);
 
@@ -367,9 +469,16 @@ public class PokerGameService
         foreach (var player in players)
         {
             var card = DealCardFromDeck(deck);
-            var hand = JsonSerializer.Deserialize<List<Card>>(player.HandCardsJson ?? "[]");
+            var hand = JsonSerializer.Deserialize<List<Card>>(player.HandCardsJson ?? "[]") ?? new List<Card>();
+            if (hand.IsNullOrEmpty()) throw new InvalidOperationException("hand should have first card when dealing second card");
             hand.Add(card);
             player.HandCardsJson = JsonSerializer.Serialize(hand);
+            var connectionId = PokerHub.GetConnectionIdByUserId(player.UserId);
+            if (connectionId != null)
+            {
+                var playerName = player.User?.DisplayName ?? "Player " + player.Position;
+                _ = GameHistoryExtension.TrackPlayerCards(_hubContext, tableId, connectionId, playerName, player.Hand);
+            }
         }
     }
 
@@ -487,17 +596,21 @@ public class PokerGameService
                     break;
             }
 
+            //await AddGameHistoryEvent(tableId, GameHistoryEvent.PlayerAction(playerName, action, action == PlayerAction.BET ? bet : null));
+            await GameHistoryExtension.TrackPlayerAction(_hubContext, tableId, currentPlayer.Name, action, bet);
             table.Game.PotJson = JsonSerializer.Serialize(table.Game.GamePot);
             _logger.LogDebug($"[HandleAction] Before save, pot amount: ${table.Game.GamePot.Amount}");
 
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            _logger.LogDebug($"After save for action: {table.Players.ToList()[0].Name} : {table.Players.ToList()[0].User.DisplayName}");
+
             var snapshot = await GetAndBroadcastFreshSnapshot(context, tableId);
             await BroadcastPlayerAction(tableId, currentPlayer.User?.DisplayName ?? "Unknown",
                 currentPlayer.Position.ToString(), action, bet);
 
-            _logger.LogInformation($"[HandleAction] {action} has been completed for {currentPlayer.User.DisplayName ?? currentPlayer.UserId}");
+            _logger.LogInformation($"[HandleAction] {action} has been completed for {currentPlayer.User?.DisplayName ?? currentPlayer.UserId}");
 
             return snapshot;
         }
@@ -576,6 +689,8 @@ public class PokerGameService
                     table.Game.CurrentTurnPlayerPosition = table.Game.FindNextActivePlayerPosition(table.Game.CurrentDealerPosition);
                     table.Game.EndPlayerPosition = table.Game.CurrentTurnPlayerPosition;
 
+                    //await AddGameHistoryEvent(tableId, GameHistoryEvent.CommunityCards(table.Game.State, communityCards));
+                    await GameHistoryExtension.TrackCommunityCards(_hubContext, tableId, table.Game.State, communityCards);
                     _logger.LogDebug($"[PlayNextStep] Turn player position now: {table.Game.CurrentTurnPlayerPosition}, End player position now: {table.Game.EndPlayerPosition}");
                     break;
 
@@ -594,6 +709,8 @@ public class PokerGameService
                     table.Game.CurrentTurnPlayerPosition = table.Game.FindNextActivePlayerPosition(table.Game.CurrentDealerPosition);
                     table.Game.EndPlayerPosition = table.Game.CurrentTurnPlayerPosition;
 
+                    //await AddGameHistoryEvent(tableId, GameHistoryEvent.CommunityCards(table.Game.State, communityCards));
+                    await GameHistoryExtension.TrackCommunityCards(_hubContext, tableId, table.Game.State, communityCards);
                     _logger.LogDebug($"[PlayNextStep] Turn player position now: {table.Game.CurrentTurnPlayerPosition}, End player position now: {table.Game.EndPlayerPosition}");
                     break;
 
@@ -612,6 +729,8 @@ public class PokerGameService
                     table.Game.CurrentTurnPlayerPosition = table.Game.FindNextActivePlayerPosition(table.Game.CurrentDealerPosition);
                     table.Game.EndPlayerPosition = table.Game.CurrentTurnPlayerPosition;
 
+                    //await AddGameHistoryEvent(tableId, GameHistoryEvent.CommunityCards(table.Game.State, communityCards));
+                    await GameHistoryExtension.TrackCommunityCards(_hubContext, tableId, table.Game.State, communityCards);
                     _logger.LogDebug($"[PlayNextStep] Turn player position now: {table.Game.CurrentTurnPlayerPosition}, End player position now: {table.Game.EndPlayerPosition}");
                     break;
 
@@ -619,6 +738,24 @@ public class PokerGameService
                     _logger.LogInformation("[PlayNextStep] End of game reached, determining winners...");
                     winners = GetWinners(table);
 
+                    foreach (var potAndWinners in winners)
+                    {
+                        foreach (var winner in potAndWinners.Value)
+                        {
+                            var playerName = winner.Key.User?.DisplayName ?? "Player " + winner.Key.Position;
+                            //await AddGameHistoryEvent(tableId, GameHistoryEvent.Winner(
+                            //    playerName,
+                            //    winner.Value.Type,
+                            //    potAndWinners.Key.Amount / potAndWinners.Value.Count,
+                            //    winner.Value.BestCards
+                            //));
+                            var amountWon = potAndWinners.Key.Amount / potAndWinners.Value.Count;
+                            await GameHistoryExtension.TrackWinner(_hubContext, tableId, playerName, winner.Value.Type, amountWon, winner.Value.BestCards);
+                        }
+                    }
+
+                    //await AddGameHistoryEvent(tableId, GameHistoryEvent.GameEnd(_tableGameCounts[tableId]));
+                    await GameHistoryExtension.TrackGameEnd(_hubContext, tableId);
                     PayOutWinners(table, winners);
                     await RecordGameHistoryAsync(tableId, table, winners);
                     table.Game.State = GameState.END;
@@ -635,6 +772,8 @@ public class PokerGameService
 
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            _logger.LogDebug($"After save: {table.Players.ToList()[0].Name} : {table.Players.ToList()[0].User.DisplayName}");
 
             return await GetAndBroadcastFreshSnapshotWithWinners(context, tableId, winners);
         }
@@ -825,7 +964,8 @@ public class PokerGameService
             if (table.Game != null && table.Game.State != GameState.NOT_STARTED && table.Game.State != GameState.END)
             {
                 // Game is going on so be careful with players leaving...
-                table.playerLeaves.Add(int.Parse(userId));
+                _logger.LogDebug("[LeaveTableAsync] adding player to playerLeaves");
+                table.playerLeaves.Add(userId);
             }
             else
             {
@@ -929,24 +1069,49 @@ public class PokerGameService
         };
 
         await using var context = await _contextFactory.CreateDbContextAsync();
-        context.GameHistories.Add(gameHistory);
-        await context.SaveChangesAsync();
+        await using var transaction = await context.Database.BeginTransactionAsync();
+
+        try
+        {
+            context.GameHistories.Add(gameHistory);
+            await context.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"[RecordGameHistoryAsync] Error recording game history: {ex.Message}");
+            await transaction.RollbackAsync();
+            throw;
+        }
     }
 
     private async Task UpdatePlayerStatsAsync(string tableId, string userId)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
-        var player = await context.GamePlayers
+        await using var transaction = await context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var player = await context.GamePlayers
             .Include(p => p.User)
             .ThenInclude(u => u.Stats)
             .FirstOrDefaultAsync(p => p.PokerTableId == tableId && p.UserId == userId);
 
-        if (player != null && player.User.Stats != null)
-        {
-            player.User.Stats.GamesPlayed++;
-            player.User.Stats.GamesWon++;
-            await context.SaveChangesAsync();
+            if (player != null && player.User.Stats != null)
+            {
+                player.User.Stats.GamesPlayed++;
+                player.User.Stats.GamesWon++;
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
         }
+        catch (Exception ex)
+        {
+            _logger.LogError($"[UpdatePlayerStatsAsync] Error recording player stats: {ex.Message}");
+            await transaction.RollbackAsync();
+            throw;
+        }
+        
     }
 
     public async Task StartTimer(string tableId, int durationSeconds)
@@ -974,7 +1139,7 @@ public class PokerGameService
         int timeLeft = _timerService.GetRemainingTime(tableId);
         if (timeLeft >= 0)
         {
-            _timerService.ResetTimer(tableId, durationSeconds);
+            await _timerService.ResetTimer(tableId, durationSeconds);
         }
     }
 
@@ -993,4 +1158,45 @@ public class PokerGameService
                 break;
         }
     }
+
+    public List<GameHistoryEvent> GetTableHistory(string tableId)
+    {
+        return GameHistoryExtension.GetTableHistory(tableId);
+    }
+
+    //public async Task AddGameHistoryEvent(string tableId, GameHistoryEvent gameEvent)
+    //{
+    //    if (!_tableHistories.ContainsKey(tableId))
+    //    {
+    //        _tableHistories[tableId] = new List<GameHistoryEvent>();
+    //    }
+
+    //    _tableHistories[tableId].Add(gameEvent);
+
+    //    await _hubContext.Clients.Group($"table_{tableId}").SendAsync("GameHistoryEvent", gameEvent);
+    //}
+
+    //public List<GameHistoryEvent> GetTableHistory(string tableId)
+    //{
+    //    if (!_tableHistories.ContainsKey(tableId))
+    //    {
+    //        return new List<GameHistoryEvent>();
+    //    }
+
+    //    return _tableHistories[tableId];
+    //}
+
+    //public async Task SendPlayerCards(string tableId, string connectionId, string playerName, List<Card> cards)
+    //{
+    //    var gameEvent = GameHistoryEvent.PlayerCards(playerName, cards);
+
+    //    if (!_tableHistories.ContainsKey(tableId))
+    //    {
+    //        _tableHistories[tableId] = new List<GameHistoryEvent>();
+    //    }
+
+    //    _tableHistories[tableId].Add(gameEvent);
+
+    //    await _hubContext.Clients.Client(connectionId).SendAsync("PlayerCards", gameEvent);
+    //}
 }

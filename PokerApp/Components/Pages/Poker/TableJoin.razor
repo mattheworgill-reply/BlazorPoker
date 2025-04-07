@@ -179,13 +179,13 @@ else
             }
             else
             {
-                NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                NavigationManager.NavigateTo("/Account/Login", true);
                 return;
             }
         }
         else
         {
-            NavigationManager.NavigateTo("/Identity/Account/Login", true);
+            NavigationManager.NavigateTo("/Account/Login", true);
             return;
         }
 
@@ -237,10 +237,8 @@ else
 
         try
         {
-            // Join the table at selected position
+            if (table == null || joinModel == null) throw new Exception("something bad in join table");
             await PokerGameService.JoinTableAsync(userId, table.TableCode, selectedPosition, joinModel.Stack);
-
-            // Navigate to the table
             NavigationManager.NavigateTo($"/poker/table/{TableId}");
         }
         catch (Exception ex)

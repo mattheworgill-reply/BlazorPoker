@@ -16,7 +16,7 @@
             <div class="card-body">
                 <Microsoft.AspNetCore.Components.Forms.EditForm FormName="create-table" Model="tableModel"
                     OnValidSubmit="CreateTableAsync" Antiforgery="false">
-                    @* <AntiforgeryToken /> *@
+
                     <Microsoft.AspNetCore.Components.Forms.DataAnnotationsValidator />
                     <Microsoft.AspNetCore.Components.Forms.ValidationSummary />
 
@@ -97,7 +97,7 @@
     private async Task CreateTableAsync()
     {
         var newTable = new PokerTable();
-        bool redirect = false;
+
         try
         {
             newTable = await PokerGameService.CreateTableAsync(
@@ -107,21 +107,12 @@
             tableModel.TimerSeconds
             );
 
-            @* await Task.Delay(100); *@
-
+            PokerGameService.Log("Debug", $"[UI - CreateTable] new table created {newTable.Id} : {newTable.Name}");
             NavigationManager.NavigateTo($"poker/table/{newTable.Id}");
-            redirect = true;
         }
         catch (Exception ex)
         {
-            // Handle error
-            Console.Error.WriteLine(ex);
+            PokerGameService.Log("Error", $"[UI - CreateTable] failed to created table {ex.Message}");
         }
-
-        @* if (redirect)
-        {
-            await InvokeAsync(() => NavigationManager.NavigateTo($"poker/table/{newTable.Id}"));
-        } *@
-
     }
 }

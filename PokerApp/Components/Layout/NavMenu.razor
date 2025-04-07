@@ -1,61 +1,100 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Poker App</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+<div class="nav-menu">
+    <div class="navbar-brand">
+        <a href="">Poker App</a>
+    </div>
+    <div class="nav-links">
+        <NavLink href="" Match="NavLinkMatch.All">
+            <span class="oi oi-home" aria-hidden="true"></span> Home
+        </NavLink>
+        <NavLink href="poker/create">
+            <span class="oi oi-plus" aria-hidden="true"></span> Create Table
+        </NavLink>
+        <NavLink href="poker/join">
+            <span class="oi oi-account-login" aria-hidden="true"></span> Join Table
+        </NavLink>
+        <NavLink href="poker/tables">
+            <span class="oi oi-list" aria-hidden="true"></span> All Tables
+        </NavLink>
+        <NavLink href="poker/manage">
+            <span class="oi oi-plus" aria-hidden="true"></span> Manage Tables
+        </NavLink>
+        <AuthorizeView>
+            <Authorized>
+                <NavLink href="profile">
+                    <span class="oi oi-person" aria-hidden="true"></span> Profile
+                </NavLink>
+            </Authorized>
+        </AuthorizeView>
     </div>
 </div>
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="oi oi-home" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="poker/create">
-                <span class="oi oi-plus" aria-hidden="true"></span> Create Table
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="poker/join">
-                <span class="oi oi-account-login" aria-hidden="true"></span> Join Table
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="poker/tables">
-                <span class="oi oi-list" aria-hidden="true"></span> All Tables
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="poker/manage">
-                <span class="oi oi-plus" aria-hidden="true"></span> Manage Tables
-            </NavLink>
-        </div>
-        <AuthorizeView>
-            <Authorized>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="profile">
-                        <span class="oi oi-person" aria-hidden="true"></span> Profile
-                    </NavLink>
-                </div>
-            </Authorized>
-        </AuthorizeView>
-    </nav>
-</div>
-
-@code {
-    private bool collapseNavMenu = true;
-
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
+<style>
+    .nav-menu {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        width: 100%;
+        background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+        color: white;
+        border-radius: 4px;
+        overflow: hidden;
     }
-}
+    
+    .navbar-brand {
+        font-size: 1.2rem;
+        font-weight: bold;
+        margin-right: 20px;
+        padding: 10px 16px;
+    }
+    
+    .navbar-brand a {
+        color: white;
+        text-decoration: none;
+    }
+    
+    .nav-links {
+        display: flex;
+        flex-wrap: wrap;
+    }
+    
+    .nav-links ::deep a {
+        padding: 12px 16px;
+        color: white;
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+    }
+    
+    .nav-links ::deep a:hover {
+        background-color: rgba(255,255,255,0.1);
+    }
+    
+    .nav-links ::deep a.active {
+        background-color: rgba(255,255,255,0.25);
+        font-weight: bold;
+    }
+    
+    .nav-links ::deep span.oi {
+        margin-right: 8px;
+    }
+    
+    @@media (max-width: 640px) {
+        .nav-menu {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .navbar-brand {
+            margin-bottom: 0;
+            width: 100%;
+        }
+        
+        .nav-links {
+            flex-direction: column;
+            width: 100%;
+        }
+    }
+</style>

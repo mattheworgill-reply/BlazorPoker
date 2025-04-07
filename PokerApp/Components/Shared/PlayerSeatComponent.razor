@@ -1,10 +1,10 @@
 
 @namespace PokerApp.Components.Shared
 
-<HeadContent>
+@*<HeadContent>
     <link href="css/poker-table.css" rel="stylesheet" />
     <link href="css/cards.css" rel="stylesheet" />
-</HeadContent>
+</HeadContent>*@
 
 <div class="player-seat @PositionClass @(IsActive ? "active" : "inactive") @(IsCurrentTurn ? "current-turn" : "")" @onclick="HandlePositionClick">
     @if (Player != null)

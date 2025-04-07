@@ -69,7 +69,11 @@
                                 <td>@table.TimerSeconds sec</td>
                                 <td>@table.CreatedAt.ToString("MM/dd/yyyy")</td>
                                 <td>
-                                    @if (table.Game?.State == GameState.NOT_STARTED)
+                                    @if (!table.IsActive)
+                                    {
+                                        <span class="badge bg-warning">Inactive</span>
+                                    }
+                                    else if (table.Game?.State == GameState.NOT_STARTED)
                                     {
                                         <span class="badge bg-secondary">Game Not Started</span>
                                     }
@@ -84,7 +88,7 @@
                                 </td>
                                 <td>@(table.Players.Count(p => p.IsSeated)) / 10</td>
                                 <td>
-                                    <span class="table-code" @onclick="() => CopyTableCode(table.TableCode)">
+                                    <span class="badge bg-secondary table-code" @onclick="() => CopyTableCode(table.TableCode)">
                                         @table.TableCode <i class="fas fa-copy ms-1"></i>
                                     </span>
                                 </td>
@@ -92,6 +96,9 @@
                                     <div class="btn-group" role="group">
                                         <button class="btn btn-sm btn-primary" @onclick="() => JoinTable(table.Id)">
                                             <i class="fas fa-sign-in-alt"></i> Join
+                                        </button>
+                                        <button class="btn btn-sm @(table.IsActive ? "btn-warning" : "btn-success")" @onclick="() => ToggleTableActivation(table)">
+                                            <i class="fas fa-trash-alt"></i> @(table.IsActive ? "Deactivate" : "Activate")
                                         </button>
                                         <button class="btn btn-sm btn-danger" @onclick="() => DeleteTablePrompt(table)">
                                             <i class="fas fa-trash-alt"></i> Delete
@@ -106,6 +113,8 @@
         }
     }
 </div>
+
+<div id="copyToast" class="copy-toast">Code copied to clipboard!</div>
 
 @if (showDeleteConfirm)
 {
@@ -135,8 +144,7 @@
     private string userId = string.Empty;
     private bool isLoading = true;
     private string? errorMessage = null;
-    
-    // Delete confirmation
+    @*private bool showToast = false;*@
     private bool showDeleteConfirm = false;
     private PokerTable? tableToDelete = null;
 
@@ -158,12 +166,12 @@
                 }
                 else
                 {
-                    NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                    NavigationManager.NavigateTo("/Account/Login", true);
                 }
             }
             else
             {
-                NavigationManager.NavigateTo("/Identity/Account/Login", true);
+                NavigationManager.NavigateTo("/Account/Login", true);
             }
         }
         catch (Exception ex)
@@ -188,7 +196,7 @@
             userTables = await context.PokerTables
                 .Include(t => t.Game)
                 .Include(t => t.Players)
-                .Where(t => t.OwnerId == userId && t.IsActive)
+                .Where(t => t.OwnerId == userId)
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
@@ -213,12 +221,25 @@
         try
         {
             await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", code);
-            // You could add a toast notification here
+            await JSRuntime.InvokeVoidAsync("showToast");
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error copying to clipboard: {ex}");
         }
+    }
+
+    private async Task ToggleTableActivation(PokerTable table)
+    {
+         try
+         {
+            bool success = await PokerGameService.ToggleTableActive(table.Id);
+            if (success) table.IsActive = !table.IsActive;
+         }
+         catch (Exception ex)
+         {
+            errorMessage = $"Error {(table.IsActive ? "deactivating" : "activating")} table: {ex.Message}";
+         }
     }
 
     private void DeleteTablePrompt(PokerTable table)
@@ -239,23 +260,15 @@
         
         try
         {
-            await using var context = await DbContextFactory.CreateDbContextAsync();
-            var table = await context.PokerTables.FindAsync(tableToDelete.Id);
-            
-            if (table != null)
+            var deleted = await PokerGameService.DeleteTableAsync(tableToDelete.Id);
+            if (deleted)
             {
-                // Soft delete - just mark as inactive
-                table.IsActive = false;
-                await context.SaveChangesAsync();
-                
-                // Remove from list
                 userTables.Remove(tableToDelete);
             }
         }
         catch (Exception ex)
         {
             errorMessage = $"Error deleting table: {ex.Message}";
-            Console.Error.WriteLine($"Error deleting table: {ex}");
         }
         finally
         {

@@ -90,7 +90,7 @@ public class PokerGame //: IPokerGame
     }
 
     // Add a private field to cache the deck instance
-    private Deck _cachedDeck;
+    private Deck? _cachedDeck;
 
     [NotMapped]
     public Pot GamePot
@@ -211,7 +211,6 @@ public class PokerGame //: IPokerGame
         var root = doc.RootElement;
         decimal amount = 0;
         var players = new List<int>();
-        Pot? sidePot = null;
 
         if (root.TryGetProperty("Amount", out var amountProp))
             amount = amountProp.GetDecimal();
@@ -250,11 +249,14 @@ public class PokerGame //: IPokerGame
 
         if (pot.SidePot != null)
         {
-            jsonObject["SidePot"] = JsonSerializer.Deserialize<Dictionary<string, object>>(SerializePot(pot.SidePot));
+            Dictionary<string, object>? jsonSidePot = JsonSerializer.Deserialize<Dictionary<string, object>>(SerializePot(pot.SidePot));
+            if (jsonSidePot == null) throw new Exception("Pot serialization broke");
+
+            jsonObject["SidePot"] = jsonSidePot;
         }
         else
         {
-            jsonObject["SidePot"] = null;
+            jsonObject["SidePot"] = new Dictionary<string, object>();
         }
 
         return JsonSerializer.Serialize(jsonObject, options);
@@ -380,7 +382,7 @@ public class PokerGame //: IPokerGame
             if (i >= 0 && i < PlayerIds.Count)
             {
                 var p = GetPlayerAtPosition(i);
-                if (p.IsActive())
+                if (p != null && p.IsActive())
                 {
                     potPlayers.Add(p);
                 }
